@@ -1,0 +1,21 @@
+SCRUM Meeting 1 - Agenda & Minutes
+
+Meeting Attendees: - Jhanghir Babar - Rahul Gonsalves - Rahul
+Saravanakumar - Nicholas Vuong - Hrudith Lakkaraju - Sudeep Pasula
+
+Agenda Items: - Review initial frontend and backend setup - Confirm UI
+structure and navigation - Discuss issues encountered during early
+components
+
+Status Update Since Last Meeting: Accomplishments: - Core setup and
+early features completed.
+
+Tasks Completed: Order History - rahulsaravanakumar - yes Discount
+Logic - nicholas_vuong - yes Receipt Generation - rahulsaravanakumar -
+yes Payment Modal - hrudithl - yes Order Builder - rahulgonsalves - yes
+Logout Flow - sudeep.pasula - yes Reports Tab - sudeep.pasula - yes
+
+Next Steps: Inventory tab, Menu tab, Login screen.
+
+Assignments: Inventory Tab - nicholas_vuong Menu Tab - nicholas_vuong
+Login Screen - hrudithl
