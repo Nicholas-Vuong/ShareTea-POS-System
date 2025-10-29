@@ -1,0 +1,16 @@
+Issue Type,Summary,Project,Priority,Labels,Description
+Epic,Authentication & Roles,X1,High,backend auth security,"All authentication, authorization, and session security for the Sharetea SaaS. Includes OAuth 2.0, JWT, RBAC, session hygiene, and auditable events."
+Epic,Database and Migrations,X1,High,database backend migrations,"Relational schema, migrations, constraints, and seed data powering the POS. Optimized for integrity and performance across environments."
+Epic,ORM / Data Access Layer,X1,Medium,backend dal orm database,"Typed data access using an ORM/repository pattern. Enforces validation, pagination, and stable contracts for services."
+Epic,Menu Service Backend,X1,High,backend menu api,"Menu, categories, toppings, allergens, and availability. CRUD, validation, and cache invalidation for pricing and presentation."
+Epic,Inventory Service Backend,X1,High,backend inventory api,"Inventory transactions and alerts. Usage, receiving, waste, and stock ledgers for real-time availability."
+Epic,Orders Service Backend,X1,Highest,backend orders api,"Order state machine and pricing. Item modifiers, totals, and lifecycle events with strong consistency."
+Epic,Payments Service Backend,X1,High,backend payments api security,"Payment capture, refunds, reconciliation, and provider webhooks with idempotency and anti-double-capture controls."
+Epic,Realtime / KDS,X1,High,backend realtime kds websocket,Event bus and WebSocket delivery for kitchen displays and live updates with retry and DLQ.
+Epic,Cashier POS Frontend,X1,High,frontend pos react,"Web-based cashier UI for fast order entry, keyboard support, and durable error handling during peak load."
+Epic,Customer Kiosk Frontend,X1,High,frontend kiosk react a11y,"Self-service ordering with accessibility-first design, screen-reader support, and multilingual flows."
+Epic,Manager Portal Frontend,X1,Medium,frontend manager react,"Administrative dashboards, menu/inventory management, reporting, and configuration tooling."
+Epic,Menu Board Frontend,X1,Medium,frontend menuboard react,"Public display for pricing, 86 states, and promotions on TV screens with low-latency updates."
+Epic,Analytics and Reports,X1,Medium,backend analytics reports,"Sales, inventory, and weather-correlated analytics with scheduled exports and KPIs."
+Epic,DevOps and Security,X1,High,devops security ci,"Build, deploy, secrets, WAF, rate limits, and observability pipelines for the stack."
+Epic,Accessibility and Usability,X1,High,a11y ux testing,"WCAG 2.1 AA audits, screen reader testing, and usability improvements across all UIs."
