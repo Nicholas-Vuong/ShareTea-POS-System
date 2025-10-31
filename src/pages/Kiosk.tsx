@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ArrowLeft, Home } from 'lucide-react';
 
+//auto translate for accessibility
 const translations = {
   en: {
     welcome: 'Welcome to Sharetea',
