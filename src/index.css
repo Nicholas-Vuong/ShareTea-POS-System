@@ -118,3 +118,49 @@ All colors MUST be HSL.
     --card-foreground: 0 0% 0%;
   }
 }
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  .text-lg-accessible {
+    @apply text-lg leading-relaxed;
+  }
+
+  .text-xl-accessible {
+    @apply text-xl leading-relaxed;
+  }
+
+  .touch-target {
+    @apply min-h-[48px] min-w-[48px];
+  }
+
+  .focus-visible-strong {
+    @apply focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+}
+
+@layer utilities {
+  .text-scale-125 {
+    font-size: 125%;
+  }
+
+  .text-scale-150 {
+    font-size: 150%;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+}
+
