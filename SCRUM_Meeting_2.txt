@@ -1,0 +1,24 @@
+SCRUM Meeting 2 - Agenda & Minutes
+
+Minutes from Previous Meeting: During the last meeting, the team
+reviewed initial frontend progress including order pages, payment modal,
+and receipt generation. Plans were set to begin the inventory, menu, and
+login screens.
+
+Agenda Items: - Review new frontend pages (inventory, menu, login) -
+Backend API and routing discussion - Confirm CRUD structure and schema
+planning
+
+Status Update: Accomplishments: - Inventory, menu, and login screens
+completed. - CRUD, tests, and auth routes created.
+
+Tasks Completed: Inventory Tab - nicholas_vuong - yes Menu Tab -
+nicholas_vuong - yes Login Screen - hrudithl - yes CRUD Routes -
+jhanghirbabar - yes Test Endpoints - jhanghirbabar - yes Auth Routes -
+hrudithl - yes
+
+Next Steps: Database schema, backend init, theme setup.
+
+Assignments: PostgreSQL Schema - jhanghirbabar Init Supabase Backend -
+jhanghirbabar Theme Setup - rahulsaravanakumar Basic UI Components -
+rahulgonsalves
