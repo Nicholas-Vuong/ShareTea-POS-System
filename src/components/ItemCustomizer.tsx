@@ -24,6 +24,7 @@ const toppingsList = [
   'Aloe Vera',
 ];
 
+// Translation strings for English and Spanish
 const translations = {
   en: {
     size: 'Size',
@@ -59,6 +60,10 @@ const translations = {
   },
 };
 
+/**
+ * ItemCustomizer component - allows users to customize drink orders
+ * Handles size, sugar level, ice level, toppings, and quantity selection
+ */
 export const ItemCustomizer = ({ itemName, itemPrice, onAddToCart, onCancel }: ItemCustomizerProps) => {
   const { language } = useAccessibilityStore();
   const t = translations[language];
@@ -69,6 +74,7 @@ export const ItemCustomizer = ({ itemName, itemPrice, onAddToCart, onCancel }: I
   const [toppings, setToppings] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
 
+  // Toggle topping selection - add if not present, remove if already selected
   const handleToppingToggle = (topping: string) => {
     setToppings((prev) =>
       prev.includes(topping)
