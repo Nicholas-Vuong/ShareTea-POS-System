@@ -212,6 +212,7 @@ export default function Cashier() {
     );
   }
 
+  //functionality for receipt view
   if (view === 'receipt' && orderData) {
     return (
       <div className="h-screen flex flex-col bg-background">
