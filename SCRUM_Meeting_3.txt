@@ -1,0 +1,25 @@
+SCRUM Meeting 3 - Agenda & Minutes
+
+Minutes from Previous Meeting: The team completed the inventory and menu
+pages, finalized login, and advanced backend routes. Plans were made to
+begin schema design and backend initialization.
+
+Agenda Items: - Review backend initialization and schema - Finalize UI
+layout and routing - Review POS UI and dashboard progress
+
+Status Update: Accomplishments: - Backend initialized, schema created. -
+UI components and theme setup done. - Layout, routing, and POS additions
+completed.
+
+Tasks Completed: PostgreSQL Schema - jhanghirbabar - yes Init Supabase
+Backend - jhanghirbabar - yes Theme Setup - rahulsaravanakumar - yes
+Basic UI Components - rahulgonsalves - yes Add Layout - sudeep.pasula -
+yes Set Routing - sudeep.pasula - yes Init React Project -
+rahulsaravanakumar - yes Manager Dashboard - yes Cashier POS UI - yes
+Language Toggle - yes
+
+Next Steps: Integration testing, backend–frontend linking, polishing UI.
+
+Assignments: Integration Testing - Team Backend–Frontend Linking -
+jhanghirbabar, hrudithl POS/Dashboard Polish - nicholas_vuong,
+sudeep.pasula
