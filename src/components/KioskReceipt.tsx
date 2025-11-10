@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { useAccessibilityStore } from '@/store/accessibilityStore';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface OrderItem {
   name: string;
@@ -41,8 +41,7 @@ export const KioskReceipt = ({
   total,
   onNewOrder,
 }: KioskReceiptProps) => {
-  const { language } = useAccessibilityStore();
-  const t = translations[language];
+  const t = useTranslation(translations);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
