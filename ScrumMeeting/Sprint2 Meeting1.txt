@@ -1,0 +1,34 @@
+SCRUM Meeting 1 - Agenda & Minutes
+Meeting Date: Monday, 11/10
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+The team completed backend initialization, UI layout setup, routing, and POS interface components in Sprint 1. Plans were made to begin API integrations, accessibility enhancements, and data synchronization features for Sprint 2.
+
+Agenda Items:
+- Review Sprint 2 backlog and API requirements
+- Finalize plan for Team-choice API, Weather API, and Translate API
+- Establish testing workflow for mid-sprint progress
+- Identify any blockers or dependencies
+
+Status Update:
+Accomplishments:
+- High-level API architecture finalized.
+- Environment variables and API keys configured.
+- Team established clear communication plan and mid-sprint checkpoints.
+
+Tasks Completed:
+API Documentation - jhanghirbabar - yes
+Team-choice API - nicholas_vuong - yes
+Weather API - rahulsaravanakumar - yes
+Translate API - hrudithl - yes
+Error Recovery - sudeep.pasula - yes
+Order Priority - hrudithl - yes
+
+Next Steps:
+Begin integrating API results into UI, validate response handling, and test error recovery.
+
+Assignments:
+API Integration Testing - Entire Team
+Error Scenario Validation - jhanghirbabar, hrudithl
+UI Wiring for New APIs - nicholas_vuong, sudeep.pasula
