@@ -20,6 +20,7 @@ interface CartState {
   items: CartItem[];
   addItem: (item: CartItem) => void;
   updateQuantity: (menuItemId: string, quantity: number, options?: CartItemOptions) => void;
+  updateItemByIndex: (index: number, updatedItem: CartItem) => void;
   removeItem: (menuItemId: string, options?: CartItemOptions) => void;
   removeItemByIndex: (index: number) => void;
   clearCart: () => void;
@@ -61,6 +62,15 @@ export const useCartStore = create<CartState>((set, get) => ({
         return item;
       }),
     })),
+  updateItemByIndex: (index, updatedItem) =>
+    set((state) => {
+      if (index < 0 || index >= state.items.length) {
+        return state;
+      }
+      const items = [...state.items];
+      items[index] = updatedItem;
+      return { items };
+    }),
   removeItem: (menuItemId, options) =>
     set((state) => ({
       items: state.items.filter((item) => {
