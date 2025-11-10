@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { useAccessibilityStore } from '@/store/accessibilityStore';
-import { Contrast, Type, Languages } from 'lucide-react';
+import { LanguageSelector } from '@/components/LanguageSelector';
+import { Contrast } from 'lucide-react';
 import { useEffect } from 'react';
 
 export const AccessibilityToolbar = () => {
-  const { highContrast, textScale, language, toggleHighContrast, setTextScale, setLanguage } = useAccessibilityStore();
+  const { highContrast, textScale, toggleHighContrast, setTextScale } = useAccessibilityStore();
 
   useEffect(() => {
     if (highContrast) {
@@ -60,16 +61,7 @@ export const AccessibilityToolbar = () => {
         </Button>
       </div>
 
-      <Button
-        variant={language === 'es' ? 'default' : 'outline'}
-        size="icon"
-        onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}
-        aria-label="Toggle language"
-        className="touch-target"
-      >
-        <Languages className="h-5 w-5" />
-        <span className="sr-only">{language === 'en' ? 'Switch to Spanish' : 'Switch to English'}</span>
-      </Button>
+      <LanguageSelector />
     </div>
   );
 };
