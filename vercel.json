@@ -1,18 +1,13 @@
 {
-  "installCommand": "npm install",
-  "buildCommand": "npm run build --workspace @sharetea/web",
-  "devCommand": "npm run dev:web",
-  "outputDirectory": "dist/web",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://sharetea-api.example.com/:path*"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
-  "env": {
-    "NODE_ENV": "production"
-  },
   "headers": [
     {
       "source": "/(.*)",
