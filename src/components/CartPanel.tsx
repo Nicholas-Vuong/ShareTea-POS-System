@@ -92,4 +92,3 @@ export const CartPanel = ({ onCheckout }: CartPanelProps) => {
     </Card>
   );
 };
-

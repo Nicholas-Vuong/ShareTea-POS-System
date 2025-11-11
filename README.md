@@ -1,311 +1,103 @@
-# Sharetea SaaS MVP
+# Sharetea SaaS - Bubble Tea Shop Management System
 
-Sharetea SaaS is a full-stack monorepo that delivers a point-of-sale and operations dashboard for tea shops. It includes an Express API backed by PostgreSQL, Google OAuth for authentication, and a React frontend with accessibility tooling.
+A complete full-stack bubble tea shop management system with POS, customer kiosk, kitchen display, and manager dashboard.
 
-## Repository Layout
+## Features
 
-```
-Project3/
-├── apps/
-│   ├── api/        # Express REST API, authentication, database access
-│   └── web/        # React application with role-based dashboards
-├── database/       # SQL schema, seed data, and documentation
-├── dist/           # Build artifacts (ignored in git)
-├── docsnstuff/     # Additional project notes (from original repo)
-├── e2e/            # Reserved for end-to-end tests
-└── README.md
-```
+### Views
+- **Login (`/login`)** - Employee authentication with role-based access
+- **Cashier POS (`/cashier`)** - Full order builder with customizations
+- **Customer Kiosk (`/kiosk`)** - WCAG 2.1 compliant self-service interface
+- **Kitchen Display (`/kitchen`)** - Real-time ticket queue management
+- **Menu Boards (`/menu-boards`)** - Auto-cycling 4K-safe displays with weather integration
+- **Manager Dashboard (`/manager`)** - Menu, inventory, employee, and sales management
 
-## Prerequisites
+### Accessibility Features (WCAG 2.1)
+- High contrast mode toggle
+- Text scaling (100%, 125%, 150%)
+- Bilingual support (EN/ES)
+- 48px+ touch targets on kiosk
+- Keyboard navigation
+- Screen reader support
 
-- Node.js 18+
-- npm 9+
-- PostgreSQL 14+
-- Google OAuth credentials (Client ID + Secret)
-- OpenWeather API key (optional, provides real weather data)
-- OpenAI API key (optional, enables AI menu recommendations)
+### Order Customization
+- Size: Small, Medium, Large
+- Sugar level: 0%, 25%, 50%, 75%, 100%
+- Ice level: No Ice, Less Ice, Normal, Extra Ice
+- Toppings: Multiple options (Tapioca Pearls, Popping Boba, etc.)
 
-## Initial Setup
+## Tech Stack
 
-### Step 1: Install Dependencies
+- **Frontend**: React 18 + TypeScript + Vite
+- **Styling**: Tailwind CSS with custom design system
+- **State Management**: Zustand for cart, auth, and accessibility
+- **Routing**: React Router v6
+- **UI Components**: Shadcn/ui
+- **Backend**: Supabase (PostgreSQL)
+- **API Integration**: WeatherAPI.com for weather data
 
-Install dependencies for all workspaces:
-```bash
-npm install
-npm install --workspace apps/api
-npm install --workspace apps/web
-```
+## Setup Instructions
 
-### Step 2: Configure Environment Variables
+### Prerequisites
+- Node.js 18+ and npm
+- Supabase account and project
+- WeatherAPI.com API key (optional, for weather features)
 
-Create `.env` files for both backend and frontend. See [ENV_SETUP.md](./ENV_SETUP.md) for detailed instructions and quick setup commands.
+### Installation
 
-**Backend (`apps/api/.env`):**
-Required variables:
-- `DATABASE_URL` - PostgreSQL connection string
-- `JWT_SECRET` - Secret for signing JWT tokens
-- `GOOGLE_CLIENT_ID` - Google OAuth Client ID
-- `GOOGLE_CLIENT_SECRET` - Google OAuth Secret
-- `GOOGLE_CALLBACK_URL` - OAuth callback URL
-- `FRONTEND_URL` - Frontend origin for CORS
-- `OPENWEATHER_API_KEY` - Optional, for weather features
-- `OPENAI_API_KEY` - Optional, for AI recommendations
-
-**Frontend (`apps/web/.env`):**
-Required variables:
-- `VITE_API_URL` - Backend API URL (default: `http://localhost:5001`)
-
-See [ENV_SETUP.md](./ENV_SETUP.md) for template files and setup commands.
-
-### Step 3: Set Up Google OAuth Credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create a new OAuth 2.0 Client ID
-3. Add authorized redirect URI: `http://localhost:5001/auth/google/callback`
-4. Copy the Client ID and Secret to `apps/api/.env`
-
-### Step 4: Set Up Database
-
-1. Create a PostgreSQL database:
+1. **Clone the repository**
    ```bash
-   createdb sharetea
-   ```
-   Or use AWS RDS and update `DATABASE_URL` accordingly.
-
-2. Run migrations:
-   ```bash
-   npm run migrate --workspace @sharetea/api
+   git clone <YOUR_GIT_URL>
+   cd <YOUR_PROJECT_NAME>
    ```
 
-### Step 5: Start Development Servers
-
-In separate terminals:
-```bash
-# Terminal 1: Backend
-npm run dev:api
-
-# Terminal 2: Frontend
-npm run dev:web
-```
-
-Or run both together:
-```bash
-npm run dev
-```
-
-The frontend will be available at `http://localhost:5173` and the API at `http://localhost:5001`.
-
-## Workspace Scripts
-
-| Command | Description |
-| ------- | ----------- |
-| `npm run dev:api` | Start the Express server with live reload |
-| `npm run dev:web` | Start the Vite dev server for the React app |
-| `npm run dev` | Run API and web apps together (requires `npm-run-all`) |
-| `npm run build` | Build both workspaces for production |
-| `npm test` | Execute Jest (API) and Vitest (web) test suites |
-| `npm run lint` | Lint all workspaces |
-
-### API workspace (`apps/api`)
-
-- `npm run dev` – Runs `nodemon src/server.js`
-- `npm test` – Executes Jest in Node test environment
-- `npm run migrate` – Runs SQL migrations (`database/schema.sql`, `database/seed.sql`)
-
-### Web workspace (`apps/web`)
-
-- `npm run dev` – Vite dev server on port `5173`
-- `npm test` – Vitest + Testing Library suite
-- `npm run build` – Outputs production assets to `dist/web`
-
-## Environment Variables
-
-### API (`apps/api/.env`)
-
-| Variable | Purpose |
-| -------- | ------- |
-| `PORT` | API port (default `5001`) |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth secret |
-| `GOOGLE_CALLBACK_URL` | OAuth callback (e.g. `http://localhost:5001/auth/google/callback`) |
-| `JWT_SECRET` | Secret for signing JWT tokens |
-| `OPENWEATHER_API_KEY` | Weather integration key (optional) |
-| `OPENAI_API_KEY` | AI recommendations key (optional) |
-| `FRONTEND_URL` | Allowed origins for CORS + OAuth redirects (comma separated) |
-
-### Web (`apps/web/.env`)
-
-| Variable | Purpose |
-| -------- | ------- |
-| `VITE_API_URL` | Base URL for API requests (default `http://localhost:5001`) |
-
-## Backend Overview
-
-- Express server with Helmet, CORS, and Morgan instrumentation.
-- Google OAuth 2.0 login flow via Passport plus fallback credential login.
-- JWT authentication and role-based authorization middleware.
-- PostgreSQL schema covering roles, users, menu items, orders, order items, payments, and inventory.
-- REST endpoints for menu, orders, inventory, reports, weather, and AI recommendations.
-- Scripts and SQL for schema creation and seeding demo data.
-
-### Key Endpoints
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/menu` | List menu items with optional filters |
-| `POST` | `/orders` | Create an order for the authenticated customer |
-| `GET` | `/orders/kitchen` | Kitchen queue (manager/cashier only) |
-| `PATCH` | `/orders/:id/status` | Update order status (manager/cashier) |
-| `GET` | `/inventory` | Inventory list (manager only) |
-| `GET` | `/reports/sales` | Sales summary (manager only) |
-| `GET` | `/weather` | Current weather summary |
-| `GET` | `/api/recommendations` | AI drink suggestions based on weather |
-
-## Frontend Overview
-
-- React 18 + Vite application with React Router 6 and Zustand.
-- Role-based dashboards for managers, cashiers, and customers.
-- Google OAuth callback handling, JWT persistence, and Axios interceptors.
-- Accessibility controls (font scaling, high contrast, language toggle) with localStorage persistence.
-- Public menu board with auto-refresh, current time, and weather summary.
-- Testing via Vitest + React Testing Library.
-
-## Accessibility Features
-
-- Skip navigation links and semantic headings.
-- Keyboard focus states, ARIA attributes, and accessible form controls.
-- Adjustable font size, theme contrast toggle, and English/Spanish localization support.
-- Google Translate widget embedded for Maria persona compliance.
-
-## Deployment Notes
-
-### Backend Deployment (AWS Elastic Beanstalk)
-
-1. **Prepare Application:**
-   - Ensure `apps/api/.ebextensions/node.config` exists with Node.js version
-   - Package the application: `cd apps/api && zip -r ../api-deploy.zip .`
-
-2. **Configure Environment Variables:**
-   Set these in the Elastic Beanstalk console under Configuration → Software:
-   - `DATABASE_URL` - Your RDS PostgreSQL connection string
-   - `JWT_SECRET` - Strong random secret (use `openssl rand -base64 32`)
-   - `GOOGLE_CLIENT_ID` - Your Google OAuth Client ID
-   - `GOOGLE_CLIENT_SECRET` - Your Google OAuth Secret
-   - `GOOGLE_CALLBACK_URL` - Your production callback URL (e.g., `https://your-api.elasticbeanstalk.com/auth/google/callback`)
-   - `FRONTEND_URL` - Your frontend deployment URL (e.g., `https://your-app.vercel.app`)
-   - `OPENWEATHER_API_KEY` - Optional, for weather features
-   - `OPENAI_API_KEY` - Optional, for AI recommendations
-   - `NODE_ENV` - Set to `production`
-   - `PORT` - Set to `5001` (or configure EB to use this port)
-
-3. **Deploy:**
-   - Upload the zip file via EB console or use EB CLI
-   - Wait for deployment to complete
-   - Test health endpoint: `https://your-api.elasticbeanstalk.com/health`
-
-### Frontend Deployment (Vercel)
-
-1. **Update Configuration:**
-   - Update `vercel.json` API proxy destination to your backend URL
-   - Set `VITE_API_URL` environment variable in Vercel dashboard to your backend URL
-
-2. **Deploy:**
+2. **Install dependencies**
    ```bash
-   # Install Vercel CLI
-   npm install -g vercel
+   npm install
+   ```
+
+3. **Configure environment variables**
    
-   # Login and deploy
-   vercel login
-   vercel --prod
+   Create a `.env` file in the project root:
+   ```env
+   VITE_SUPABASE_URL=your-supabase-url
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   VITE_WEATHERAPI_KEY=your-weatherapi-key
    ```
-   Or connect your GitHub repository to Vercel for automatic deployments.
 
-3. **Configure Environment Variables:**
-   In Vercel dashboard → Settings → Environment Variables:
-   - `VITE_API_URL` - Your backend API URL (e.g., `https://your-api.elasticbeanstalk.com`)
+   Get your Supabase credentials from: Supabase Dashboard → Settings → API
 
-4. **Update Backend CORS:**
-   After frontend is deployed, update `FRONTEND_URL` in backend to include your Vercel URL.
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
 
-### Important Notes
+   The application will be available at `http://localhost:8080`
 
-- `apps/api/.ebextensions/node.config` configures Node.js runtime for AWS Elastic Beanstalk
-- `vercel.json` (root) configures Vercel build for the web app
-- Provide environment variables to each platform according to the tables above
-- Test both deployments independently before testing integration
-- Update Google OAuth redirect URIs to include production URLs
-- Ensure database allows connections from your deployment platform
+5. **Build for production**
+   ```bash
+   npm run build
+   npm run preview
+   ```
 
-### Elastic Beanstalk Sample Config
+## Project Structure
 
 ```
-option_settings:
-  aws:elasticbeanstalk:container:nodejs:
-    NodeVersion: 18
-  aws:elasticbeanstalk:application:environment:
-    NODE_ENV: production
-    PORT: '5001'
+src/
+├── components/     # React components
+├── pages/          # Page components
+├── lib/            # Utilities and API clients
+├── store/          # Zustand state management
+├── hooks/          # Custom React hooks
+└── integrations/   # Third-party integrations (Supabase)
 ```
 
-## Testing
+## Development
 
-```bash
-# API tests
-npm test --workspace @sharetea/api
+- **Linting**: `npm run lint`
+- **Build**: `npm run build`
+- **Preview**: `npm run preview`
 
-# Web tests
-npm test --workspace @sharetea/web
-```
+## License
 
-## Troubleshooting
-
-### Common Issues
-
-**Database Connection Errors:**
-- Verify PostgreSQL is running: `pg_isready`
-- Check `DATABASE_URL` format: `postgresql://user:password@host:port/database`
-- For AWS RDS, ensure security groups allow connections from your IP
-- Test connection: `psql $DATABASE_URL`
-
-**Google OAuth Not Working:**
-- Verify `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set correctly
-- Check that redirect URI matches exactly: `http://localhost:5001/auth/google/callback`
-- Ensure OAuth consent screen is configured in Google Cloud Console
-- Check browser console for CORS errors
-
-**API Calls Failing:**
-- Verify backend is running on port 5001 (check `PORT` in `.env`)
-- Check `VITE_API_URL` in frontend `.env` matches backend URL
-- Verify CORS settings in backend allow frontend origin
-- Check browser Network tab for detailed error messages
-
-**Build Errors:**
-- Clear node_modules and reinstall: `rm -rf node_modules && npm install`
-- Verify Node.js version matches requirement (18+): `node --version`
-- Check workspace dependencies are installed: `npm install --workspace apps/api && npm install --workspace apps/web`
-
-**Migration Errors:**
-- Ensure database exists before running migrations
-- Check database user has CREATE TABLE permissions
-- Verify `DATABASE_URL` is correct: `psql $DATABASE_URL -c "SELECT 1"`
-
-**Frontend Not Loading:**
-- Verify Vite dev server is running on port 5173
-- Check for port conflicts: `lsof -i :5173`
-- Clear browser cache and hard refresh (Ctrl+Shift+R / Cmd+Shift+R)
-
-### Getting Help
-
-- Check backend logs for detailed error messages
-- Review browser console for frontend errors
-- Verify all environment variables are set correctly
-- Ensure PostgreSQL accepts connections from the host running the API
-- When running both servers locally, start the API before the web app so OAuth redirects succeed
-- If Google OAuth secrets are missing, the API will log a warning and only email/password login is available
-
-## Further Work
-
-- Hook menu management mutations into the manager dashboard UI.
-- Expand Vitest coverage for complex components (cart, dashboards).
-- Add CI/CD pipelines (GitHub Actions) to run linting, tests, and deploy to dev environments.
+Private project - All rights reserved

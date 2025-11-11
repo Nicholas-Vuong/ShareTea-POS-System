@@ -34,8 +34,8 @@ export interface WeatherForecast {
 }
 
 /**
- * 
- * @param location
+ * Get current weather data from WeatherAPI.com
+ * @param location - Location query (city name, zip code, lat,lon, or "auto:ip" for IP-based location)
  */
 export async function getWeather(location: string = 'College Station, Texas'): Promise<WeatherData> {
   if (!WEATHERAPI_KEY) {
@@ -124,4 +124,3 @@ export async function getWeatherForecast(location: string = 'College Station, Te
     forecast,
   };
 }
-

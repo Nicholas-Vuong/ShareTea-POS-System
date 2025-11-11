@@ -172,12 +172,12 @@ export const api = {
       throw new Error(`Failed to create order: ${orderError?.message || 'Unknown error'}`);
     }
 
-
+    // Calculate totals and create order items
     let subtotal = 0;
     const orderItems = [];
 
     for (const item of order.items) {
- 
+      // Get menu item to get price
       const { data: menuItem, error: menuError } = await supabase
         .from('menu_items')
         .select('default_price')
@@ -192,7 +192,7 @@ export const api = {
       const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
 
-
+      // Create order item
       const { error: itemError } = await supabase
         .from('order_items')
         .insert({
@@ -219,7 +219,7 @@ export const api = {
       });
     }
 
-
+    // Calculate discount if promo code provided
     const discount = order.discount || 0;
     const discountedSubtotal = subtotal - discount;
     
@@ -491,21 +491,18 @@ export const api = {
       }
     }
 
-    if (userError || !user) 
-      {
+    if (userError || !user) {
       throw new Error('Invalid username/email or password');
     }
 
     // Check if user has a password hash
-    if (!user.password_hash) 
-      {
+    if (!user.password_hash) {
       throw new Error('Account not set up with password. Please contact administrator.');
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    if (!isValidPassword) 
-      {
+    if (!isValidPassword) {
       throw new Error('Invalid username/email or password');
     }
 
@@ -513,20 +510,13 @@ export const api = {
     const roleName = (user.roles as any)?.role_name?.toLowerCase() || '';
     let role: 'manager' | 'cashier' | 'barista' | 'customer' = 'customer';
     
-    if (roleName.includes('manager')) 
-      {
+    if (roleName.includes('manager')) {
       role = 'manager';
-    } 
-    else if (roleName.includes('cashier')) 
-      {
+    } else if (roleName.includes('cashier')) {
       role = 'cashier';
-    } 
-    else if (roleName.includes('barista')) 
-      {
+    } else if (roleName.includes('barista')) {
       role = 'barista';
-    } 
-    else if (roleName.includes('customer')) 
-      {
+    } else if (roleName.includes('customer')) {
       role = 'customer';
     }
 
@@ -870,4 +860,3 @@ export const api = {
     return { dailySales, topItems, categorySales };
   },
 };
-
