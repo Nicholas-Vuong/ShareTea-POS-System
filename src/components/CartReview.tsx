@@ -1,12 +1,16 @@
+import { useState, useEffect } from 'react';
 import { useCartStore } from '@/store/cartStore';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Trash2, Plus, Minus, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Trash2, Plus, Minus, ArrowLeft, ArrowRight, Pencil } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 import { useAccessibilityStore } from '@/store/accessibilityStore';
+import { translateMultiple } from '@/lib/translate';
 
 interface CartReviewProps {
   onBack: () => void;
   onProceed: () => void;
+  onEditItem?: (index: number) => void;
 }
 
 const translations = {
@@ -20,6 +24,7 @@ const translations = {
     back: 'Back',
     quantity: 'Quantity',
     edit: 'Edit',
+    sugar: 'sugar',
   },
   es: {
     reviewOrder: 'Revisar su pedido',
@@ -31,13 +36,80 @@ const translations = {
     back: 'Atrás',
     quantity: 'Cantidad',
     edit: 'Editar',
+    sugar: 'azúcar',
   },
 };
 
-export const CartReview = ({ onBack, onProceed }: CartReviewProps) => {
+export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) => {
   const { items, removeItemByIndex, updateQuantity, getTotal } = useCartStore();
+  const t = useTranslation(translations);
   const { language } = useAccessibilityStore();
-  const t = translations[language];
+  const [translatedOptions, setTranslatedOptions] = useState<Map<string, { size: string; ice: string; toppings: Map<string, string> }>>(new Map());
+
+  // Translate size and ice options for all items
+  useEffect(() => {
+    let cancelled = false;
+
+    const translateOptions = async () => {
+      if (language === 'en' || items.length === 0) {
+        setTranslatedOptions(new Map());
+        return;
+      }
+
+      try {
+        const uniqueSizes = Array.from(new Set(items.map(item => item.options.size)));
+        const uniqueIce = Array.from(new Set(items.map(item => item.options.ice)));
+        const allToppings = Array.from(new Set(items.flatMap(item => item.options.toppings)));
+
+        const translatedSizes = await translateMultiple(uniqueSizes, language, 'en');
+        const translatedIce = await translateMultiple(uniqueIce, language, 'en');
+        const translatedToppings = allToppings.length > 0 
+          ? await translateMultiple(allToppings, language, 'en')
+          : [];
+
+        if (cancelled) return;
+
+        const sizeMap = new Map<string, string>();
+        uniqueSizes.forEach((size, index) => {
+          sizeMap.set(size, translatedSizes[index] || size);
+        });
+
+        const iceMap = new Map<string, string>();
+        uniqueIce.forEach((ice, index) => {
+          iceMap.set(ice, translatedIce[index] || ice);
+        });
+
+        const toppingMap = new Map<string, string>();
+        allToppings.forEach((topping, index) => {
+          toppingMap.set(topping, translatedToppings[index] || topping);
+        });
+
+        const optionsMap = new Map<string, { size: string; ice: string; toppings: Map<string, string> }>();
+        items.forEach((item) => {
+          optionsMap.set(`${item.menuItemId}-${JSON.stringify(item.options)}`, {
+            size: sizeMap.get(item.options.size) || item.options.size,
+            ice: iceMap.get(item.options.ice) || item.options.ice,
+            toppings: toppingMap,
+          });
+        });
+
+        if (!cancelled) {
+          setTranslatedOptions(optionsMap);
+        }
+      } catch (error) {
+        console.error('Error translating options:', error);
+        if (!cancelled) {
+          setTranslatedOptions(new Map());
+        }
+      }
+    };
+
+    translateOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, language]);
 
   const handleQuantityChange = (index: number, currentQuantity: number, delta: number) => {
     const newQuantity = currentQuantity + delta;
@@ -70,29 +142,52 @@ export const CartReview = ({ onBack, onProceed }: CartReviewProps) => {
           ) : (
             <>
               <div className="space-y-4 mb-6">
-                {items.map((item, index) => (
-                  <div key={`${item.menuItemId}-${index}`} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{item.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {item.options.size} • {item.options.sugar}% sugar • {item.options.ice}
-                        </p>
-                        {item.options.toppings.length > 0 && (
+                {items.map((item, index) => {
+                  const optionKey = `${item.menuItemId}-${JSON.stringify(item.options)}`;
+                  const translated = translatedOptions.get(optionKey);
+                  const displaySize = translated?.size || item.options.size;
+                  const displayIce = translated?.ice || item.options.ice;
+                  const displayToppings = item.options.toppings.map(topping => 
+                    translated?.toppings.get(topping) || topping
+                  );
+
+                  return (
+                    <div key={`${item.menuItemId}-${index}`} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">{item.name}</h3>
                           <p className="text-sm text-muted-foreground">
-                            + {item.options.toppings.join(', ')}
+                            {displaySize} • {item.options.sugar}% {t.sugar} • {displayIce}
                           </p>
+                          {displayToppings.length > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              + {displayToppings.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      <div className="flex gap-2">
+                        {onEditItem && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onEditItem(index)}
+                            className="touch-target flex items-center gap-1"
+                            aria-label={t.edit}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            {t.edit}
+                          </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItemByIndex(index)}
+                          className="text-destructive touch-target"
+                          aria-label={t.remove}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItemByIndex(index)}
-                        className="text-destructive touch-target"
-                        aria-label={t.remove}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
@@ -121,7 +216,8 @@ export const CartReview = ({ onBack, onProceed }: CartReviewProps) => {
                       <span className="font-bold text-lg">${item.subtotal.toFixed(2)}</span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="border-t pt-4 space-y-4">
