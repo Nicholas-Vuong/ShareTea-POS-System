@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { MenuItem, LowStockItem, InventoryItem, Employee, SalesReport, SalesData, api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { LogOut, Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { MenuNutritionSummary } from '@/components/MenuNutritionSummary';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export default function Manager() {
   const [editingEmployee, setEditingEmployee] = useState<string | null>(null);
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
   const [newMenuItem, setNewMenuItem] = useState({ name: '', category: '', price: 0, description: '', active: true });
+  const [expandedNutritionId, setExpandedNutritionId] = useState<string | null>(null);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -349,78 +351,105 @@ export default function Manager() {
                     <TableHead>Category</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Nutrition summary</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {menu.map((item) => (
-                    <TableRow key={item.id}>
-                      {editingItem === item.id ? (
-                        <>
-                          <TableCell>
-                            <Input
-                              value={item.name}
-                              onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, name: e.target.value } : i))}
-                            />
+                    <Fragment key={item.id}>
+                      <TableRow>
+                        {editingItem === item.id ? (
+                          <>
+                            <TableCell>
+                              <Input
+                                value={item.name}
+                                onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, name: e.target.value } : i))}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={item.category}
+                                onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, category: e.target.value } : i))}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.price}
+                                onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, price: parseFloat(e.target.value) || 0 } : i))}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={item.active ? 'active' : 'inactive'}
+                                onValueChange={(val) => setMenu(menu.map(i => i.id === item.id ? { ...i, active: val === 'active' } : i))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="active">Active</SelectItem>
+                                  <SelectItem value="inactive">Inactive</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              Save changes to view nutrition
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" onClick={() => handleSaveMenuItem(item)}>
+                                <Save className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingItem(null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.category}</TableCell>
+                            <TableCell>${item.price.toFixed(2)}</TableCell>
+                            <TableCell>
+                              <Badge variant={item.active ? 'default' : 'secondary'}>
+                                {item.active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant={expandedNutritionId === item.id ? 'default' : 'outline'}
+                                onClick={() =>
+                                  setExpandedNutritionId((prev) => (prev === item.id ? null : item.id))
+                                }
+                                aria-expanded={expandedNutritionId === item.id}
+                                className="touch-target"
+                              >
+                                {expandedNutritionId === item.id ? 'Hide summary' : 'Show summary'}
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingItem(item.id)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => handleDeleteMenuItem(item.id)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                      {expandedNutritionId === item.id && (
+                        <TableRow className="bg-muted/40">
+                          <TableCell colSpan={6}>
+                            {/* Manager view exposes quick USDA macro summary for Project 3 demo */}
+                            <MenuNutritionSummary menuItemId={item.id} />
                           </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.category}
-                              onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, category: e.target.value } : i))}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={item.price}
-                              onChange={(e) => setMenu(menu.map(i => i.id === item.id ? { ...i, price: parseFloat(e.target.value) || 0 } : i))}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={item.active ? 'active' : 'inactive'}
-                              onValueChange={(val) => setMenu(menu.map(i => i.id === item.id ? { ...i, active: val === 'active' } : i))}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" onClick={() => handleSaveMenuItem(item)}>
-                              <Save className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingItem(null)}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="font-medium">{item.name}</TableCell>
-                          <TableCell>{item.category}</TableCell>
-                          <TableCell>${item.price.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={item.active ? 'default' : 'secondary'}>
-                              {item.active ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingItem(item.id)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleDeleteMenuItem(item.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </>
+                        </TableRow>
                       )}
-                    </TableRow>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>
