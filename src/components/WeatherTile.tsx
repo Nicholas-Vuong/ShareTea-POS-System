@@ -3,7 +3,11 @@ import { getWeatherForecast, WeatherForecast } from '@/lib/weather';
 import { Droplets, Wind, Eye, Sun } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
-export const WeatherTile = () => {
+interface WeatherTileProps {
+  compact?: boolean;
+}
+
+export const WeatherTile = ({ compact = false }: WeatherTileProps) => {
   const [forecast, setForecast] = useState<WeatherForecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,11 +42,10 @@ export const WeatherTile = () => {
 
   if (loading) {
     return (
-      <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20">
-        <div className="animate-pulse space-y-4">
-          <div className="h-16 w-16 rounded bg-muted-foreground/20" />
-          <div className="h-6 w-32 rounded bg-muted-foreground/20" />
-          <div className="h-4 w-24 rounded bg-muted-foreground/20" />
+      <Card className={`${compact ? 'p-3' : 'p-6'} bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20`}>
+        <div className="animate-pulse space-y-2">
+          <div className={`${compact ? 'h-8 w-8' : 'h-16 w-16'} rounded bg-muted-foreground/20`} />
+          <div className={`${compact ? 'h-4 w-24' : 'h-6 w-32'} rounded bg-muted-foreground/20`} />
         </div>
       </Card>
     );
@@ -50,7 +53,7 @@ export const WeatherTile = () => {
 
   if (error || !forecast) {
     return (
-      <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20">
+      <Card className={`${compact ? 'p-3' : 'p-6'} bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20`}>
         <div className="text-sm text-muted-foreground">
           {error || 'Weather unavailable'}
         </div>
@@ -59,6 +62,29 @@ export const WeatherTile = () => {
   }
 
   const { current } = forecast;
+
+  if (compact) {
+    return (
+      <Card className="p-3 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20">
+        <div className="flex items-center gap-3">
+          {current.icon && (
+            <img 
+              src={current.icon} 
+              alt={current.condition}
+              className="h-10 w-10"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
+          <div>
+            <div className="text-xl font-bold">{current.temp}°F</div>
+            <div className="text-xs text-muted-foreground capitalize">{current.condition}</div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20">
