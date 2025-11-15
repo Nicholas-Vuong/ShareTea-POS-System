@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ArrowLeft } from 'lucide-react';
-import { useAccessibilityStore } from '@/store/accessibilityStore';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface CheckoutProps {
   onBack: () => void;
@@ -66,8 +66,7 @@ const validatePromoCode = (code: string): number => {
 
 export const Checkout = ({ onBack, onComplete }: CheckoutProps) => {
   const { items, getTotal } = useCartStore();
-  const { language } = useAccessibilityStore();
-  const t = translations[language];
+  const t = useTranslation(translations);
 
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [promoCode, setPromoCode] = useState('');
