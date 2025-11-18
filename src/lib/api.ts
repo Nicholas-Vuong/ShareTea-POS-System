@@ -68,6 +68,7 @@ export interface CreateOrderRequest {
   paymentMethod?: string;
   promoCode?: string | null;
   discount?: number;
+  customerId?: string;
 }
 
 export interface Order {
@@ -76,6 +77,7 @@ export interface Order {
   createdAt: string;
   items: Array<{
     name: string;
+    quantity: number;
     options: {
       size: string;
       sugar: number;
@@ -83,6 +85,8 @@ export interface Order {
       toppings: string[];
     };
   }>;
+  estimatedPrepTime?: number;
+  priority?: number;
 }
 
 export const api = {
@@ -145,8 +149,13 @@ export const api = {
   },
 
   async createOrder(order: CreateOrderRequest): Promise<Order> {
+    // Validate that we have items
+    if (!order.items || order.items.length === 0) {
+      throw new Error('Cannot create order with no items');
+    }
+
     // Start a transaction by creating the order first
-    // Note: source column may not exist, so we'll try without it first
+    // Note: source column may not exist in all database schemas
     const orderInsert: any = {
       status: 'PLACED',
       subtotal: 0,
@@ -154,19 +163,38 @@ export const api = {
       tax: 0,
       total: 0,
     };
-    
-    // Try to add source if column exists (will be handled by database)
-    try {
-      orderInsert.source = order.source;
-    } catch (e) {
-      // Column doesn't exist, that's okay
+
+    // Add customer_id if provided
+    if (order.customerId) {
+      orderInsert.customer_id = parseInt(order.customerId);
     }
 
-    const { data: orderData, error: orderError } = await supabase
+    // Try to insert with source first, if it fails, retry without it
+    let orderData;
+    let orderError;
+    
+    // First attempt: try with source
+    const orderInsertWithSource = { ...orderInsert, source: order.source };
+    const resultWithSource = await supabase
       .from('orders')
-      .insert(orderInsert)
+      .insert(orderInsertWithSource)
       .select()
       .single();
+    
+    orderData = resultWithSource.data;
+    orderError = resultWithSource.error;
+
+    // If source column doesn't exist, retry without it
+    if (orderError && (orderError.message.includes('source') || orderError.message.includes('column'))) {
+      const resultWithoutSource = await supabase
+        .from('orders')
+        .insert(orderInsert)
+        .select()
+        .single();
+      
+      orderData = resultWithoutSource.data;
+      orderError = resultWithoutSource.error;
+    }
 
     if (orderError || !orderData) {
       throw new Error(`Failed to create order: ${orderError?.message || 'Unknown error'}`);
@@ -263,6 +291,7 @@ export const api = {
       createdAt: orderData.order_time,
       items: order.items.map((item, index) => ({
         name: menuItemMap.get(parseInt(item.menuItemId)) || 'Unknown Item',
+        quantity: item.quantity,
         options: item.options,
       })),
     };
@@ -326,18 +355,357 @@ export const api = {
       createdAt: order.order_time,
       items: (order.order_items || []).map((oi: any) => ({
         name: oi.menu_items?.name || 'Unknown Item',
+        quantity: oi.quantity || 1,
         options: oi.options || {},
       })),
     }));
   },
 
   async updateOrderStatus(orderId: string, status: 'PREPARING' | 'READY' | 'COMPLETED'): Promise<void> {
+    // Allow COMPLETED → PREPARING transition for re-opening orders
+    // All transitions are allowed: PLACED → PREPARING → READY → COMPLETED → PREPARING (re-open)
     const { error } = await supabase
       .from('orders')
       .update({ status })
       .eq('order_id', parseInt(orderId));
 
     if (error) throw new Error(`Failed to update order status: ${error.message}`);
+  },
+
+  async getKitchenQueueWithCompleted(): Promise<Order[]> {
+    // Query orders including COMPLETED status for re-opening capability
+    // Try with source column first, fallback without if it doesn't exist
+    let selectQuery = `
+      order_id,
+      status,
+      order_time,
+      source,
+      order_items (
+        menu_item_id,
+        quantity,
+        options,
+        menu_items (
+          name
+        )
+      )
+    `;
+
+    let { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select(selectQuery)
+      .in('status', ['PLACED', 'PREPARING', 'READY', 'COMPLETED'])
+      .order('order_time', { ascending: false });
+
+    // If source column doesn't exist, retry without it
+    if (ordersError && (ordersError.message.includes('source') || ordersError.message.includes('column'))) {
+      selectQuery = `
+        order_id,
+        status,
+        order_time,
+        order_items (
+          menu_item_id,
+          quantity,
+          options,
+          menu_items (
+            name
+          )
+        )
+      `;
+      
+      const retry = await supabase
+        .from('orders')
+        .select(selectQuery)
+        .in('status', ['PLACED', 'PREPARING', 'READY', 'COMPLETED'])
+        .order('order_time', { ascending: false });
+      
+      orders = retry.data;
+      ordersError = retry.error;
+    }
+
+    if (ordersError) {
+      console.error('Error fetching kitchen queue:', ordersError);
+      throw new Error(`Failed to fetch kitchen queue: ${ordersError.message}`);
+    }
+
+    if (!orders) {
+      console.warn('No orders returned from kitchen queue query');
+      return [];
+    }
+
+    const mappedOrders = orders.map((order: any) => ({
+      orderId: order.order_id.toString(),
+      status: order.status as Order['status'],
+      createdAt: order.order_time || new Date().toISOString(),
+      items: (order.order_items || []).map((oi: any) => ({
+        name: oi.menu_items?.name || 'Unknown Item',
+        quantity: oi.quantity || 1,
+        options: oi.options || {},
+      })),
+    }));
+
+    // Filter out orders with no items (shouldn't happen, but safety check)
+    return mappedOrders.filter(order => order.items.length > 0);
+  },
+
+  async getCustomerOrders(userId: string): Promise<Order[]> {
+    try {
+      const userIdNum = parseInt(userId);
+      if (isNaN(userIdNum)) {
+        throw new Error(`Invalid user ID: ${userId}`);
+      }
+
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select(`
+          order_id,
+          status,
+          order_time,
+          total,
+          order_items (
+            menu_item_id,
+            quantity,
+            options,
+            menu_items (
+              name
+            )
+          )
+        `)
+        .eq('customer_id', userIdNum)
+        .order('order_time', { ascending: false });
+
+      if (ordersError) {
+        console.error('Supabase error fetching customer orders:', ordersError);
+        throw new Error(`Failed to fetch customer orders: ${ordersError.message}`);
+      }
+
+      if (!orders) {
+        console.warn('No orders returned from query (null/undefined)');
+        return [];
+      }
+
+      // Map orders and handle any issues with individual orders
+      const mappedOrders = (orders || []).map((order: any) => {
+        try {
+          return {
+            orderId: order.order_id?.toString() || 'unknown',
+            status: (order.status || 'UNKNOWN') as Order['status'],
+            createdAt: order.order_time || new Date().toISOString(),
+            items: (order.order_items || []).map((oi: any) => ({
+              name: oi.menu_items?.name || 'Unknown Item',
+              quantity: oi.quantity || 1,
+              options: oi.options || {},
+            })),
+          };
+        } catch (orderError) {
+          console.error('Error mapping order:', order, orderError);
+          // Return a minimal valid order object
+          return {
+            orderId: order.order_id?.toString() || 'unknown',
+            status: 'UNKNOWN' as Order['status'],
+            createdAt: order.order_time || new Date().toISOString(),
+            items: [],
+          };
+        }
+      });
+
+      return mappedOrders;
+    } catch (error: any) {
+      console.error('Error in getCustomerOrders:', error);
+      throw error;
+    }
+  },
+
+  async getRecentOrderStatus(orderId: string): Promise<Order | null> {
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select(`
+        order_id,
+        status,
+        order_time,
+        source,
+        order_items (
+          menu_item_id,
+          quantity,
+          options,
+          menu_items (
+            name
+          )
+        )
+      `)
+      .eq('order_id', parseInt(orderId))
+      .single();
+
+    if (error) throw new Error(`Failed to fetch order status: ${error.message}`);
+    if (!order) return null;
+
+    return {
+      orderId: order.order_id.toString(),
+      status: order.status as Order['status'],
+      createdAt: order.order_time,
+      items: (order.order_items || []).map((oi: any) => ({
+        name: oi.menu_items?.name || 'Unknown Item',
+        quantity: oi.quantity || 1,
+        options: oi.options || {},
+      })),
+    };
+  },
+
+  async findOrCreateCustomer(
+    email: string | undefined,
+    fullName: string,
+    phone?: string
+  ): Promise<string | undefined> {
+    // If no email provided, return undefined (one-time order without account)
+    if (!email || !email.trim()) {
+      return undefined;
+    }
+
+    // First, try to find existing customer by email
+    const trimmedEmail = email.trim().toLowerCase();
+    
+    const { data: existingUser, error: lookupError } = await supabase
+      .from('users')
+      .select('user_id, role_id, roles(role_name)')
+      .eq('email', trimmedEmail)
+      .maybeSingle();
+
+    // If customer exists and has customer role, return their ID
+    if (existingUser && !lookupError) {
+      const roleName = (existingUser.roles as any)?.role_name?.toLowerCase() || '';
+      if (roleName === 'customer') {
+        return existingUser.user_id.toString();
+      }
+      // If user exists but is not a customer, we can't use them
+      // We'll create a new customer account
+    }
+
+    // Customer doesn't exist, create new one
+    // Get Customer role_id
+    const { data: allRoles, error: rolesError } = await supabase
+      .from('roles')
+      .select('role_id, role_name');
+
+    if (rolesError || !allRoles) {
+      throw new Error(`Failed to fetch roles: ${rolesError?.message || 'Unknown error'}`);
+    }
+
+    const customerRole = allRoles.find(
+      (r) => r.role_name.toLowerCase() === 'customer'
+    );
+
+    if (!customerRole) {
+      throw new Error('Customer role not found');
+    }
+
+    // Generate a username from email (before @)
+    const usernameBase = trimmedEmail.split('@')[0];
+    let username = usernameBase;
+    let counter = 1;
+
+    // Check if username exists and find available one
+    const { data: allUsers } = await supabase
+      .from('users')
+      .select('username');
+
+    if (allUsers) {
+      const existingUsernames = new Set(allUsers.map(u => u.username.toLowerCase()));
+      while (existingUsernames.has(username.toLowerCase())) {
+        username = `${usernameBase}${counter}`;
+        counter++;
+      }
+    }
+
+    // Create customer user with a placeholder password hash
+    // Cashier-created customers can set their own password later if needed
+    // Generate a random password hash that won't be used for login
+    const placeholderPassword = `cashier_created_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const salt = await bcrypt.genSalt(10);
+    const placeholderHash = await bcrypt.hash(placeholderPassword, salt);
+
+    const { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert({
+        username,
+        password_hash: placeholderHash, // Placeholder hash - customer can reset password later
+        full_name: fullName,
+        role_id: customerRole.role_id,
+        email: trimmedEmail,
+      })
+      .select('user_id')
+      .single();
+
+    if (createError || !newUser) {
+      throw new Error(`Failed to create customer: ${createError?.message || 'Unknown error'}`);
+    }
+
+    return newUser.user_id.toString();
+  },
+
+  async getOrdersInProgressOrRecent(userId: string, timeWindowMinutes: number = 5): Promise<Order[]> {
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() - timeWindowMinutes * 60 * 1000);
+    const cutoffTimeStr = cutoffTime.toISOString();
+
+    // Fetch orders in progress (PLACED, PREPARING, READY) or recently completed
+    // Use separate queries and combine results for better compatibility
+    const [inProgressResult, recentCompletedResult] = await Promise.all([
+      supabase
+        .from('orders')
+        .select(`
+          order_id,
+          status,
+          order_time,
+          order_items (
+            menu_item_id,
+            quantity,
+            options,
+            menu_items (
+              name
+            )
+          )
+        `)
+        .eq('customer_id', parseInt(userId))
+        .in('status', ['PLACED', 'PREPARING', 'READY']),
+      supabase
+        .from('orders')
+        .select(`
+          order_id,
+          status,
+          order_time,
+          order_items (
+            menu_item_id,
+            quantity,
+            options,
+            menu_items (
+              name
+            )
+          )
+        `)
+        .eq('customer_id', parseInt(userId))
+        .eq('status', 'COMPLETED')
+        .gte('order_time', cutoffTimeStr),
+    ]);
+
+    if (inProgressResult.error) throw new Error(`Failed to fetch orders: ${inProgressResult.error.message}`);
+    if (recentCompletedResult.error) throw new Error(`Failed to fetch orders: ${recentCompletedResult.error.message}`);
+
+    const allOrders = [...(inProgressResult.data || []), ...(recentCompletedResult.data || [])];
+    
+    // Sort by order_time descending (most recent first)
+    allOrders.sort((a: any, b: any) => 
+      new Date(b.order_time).getTime() - new Date(a.order_time).getTime()
+    );
+
+    return allOrders.map((order: any) => ({
+      orderId: order.order_id.toString(),
+      status: order.status as Order['status'],
+      createdAt: order.order_time,
+      items: (order.order_items || []).map((oi: any) => ({
+        name: oi.menu_items?.name || 'Unknown Item',
+        quantity: oi.quantity || 1,
+        options: oi.options || {},
+      })),
+    }));
   },
 
   async getCurrentUser(): Promise<{ userId: string; role: 'manager' | 'cashier' | 'barista' | 'customer' }> {
@@ -349,7 +717,7 @@ export const api = {
     password: string,
     fullName: string,
     role: 'Manager' | 'Cashier' | 'Barista' | 'Customer',
-    email: string
+    email?: string
   ): Promise<{ userId: string; role: string; email?: string }> {
     // Check if username already exists (case-insensitive)
     // Fetch all users and compare case-insensitively
@@ -367,25 +735,35 @@ export const api = {
       }
     }
 
-    // Check if email already exists
-    const { data: existingEmail } = await supabase
-      .from('users')
-      .select('user_id')
-      .eq('email', email)
-      .single();
+    // Check if email already exists (only when provided)
+    const trimmedEmail = email?.trim();
+    if (trimmedEmail) {
+      const { data: existingEmail } = await supabase
+        .from('users')
+        .select('user_id')
+        .eq('email', trimmedEmail)
+        .single();
 
-    if (existingEmail) {
-      throw new Error('Email already exists');
+      if (existingEmail) {
+        throw new Error('Email already exists');
+      }
     }
 
-    // Get role_id for the selected role
-    const { data: roleData, error: roleError } = await supabase
+    // Get role_id for the selected role (case-insensitive matching)
+    const { data: allRoles, error: rolesError } = await supabase
       .from('roles')
-      .select('role_id')
-      .eq('role_name', role)
-      .single();
+      .select('role_id, role_name');
 
-    if (roleError || !roleData) {
+    if (rolesError || !allRoles) {
+      throw new Error(`Failed to fetch roles: ${rolesError?.message || 'Unknown error'}`);
+    }
+
+    const roleLower = role.toLowerCase();
+    const roleData = allRoles.find(
+      (r) => r.role_name.toLowerCase() === roleLower
+    );
+
+    if (!roleData) {
       throw new Error(`Invalid role: ${role}`);
     }
 
@@ -401,7 +779,7 @@ export const api = {
         password_hash: passwordHash,
         full_name: fullName,
         role_id: roleData.role_id,
-        email: email,
+        email: trimmedEmail || null,
       })
       .select('user_id, role_id, email, roles(role_name)')
       .single();
@@ -608,6 +986,15 @@ export const api = {
       .eq('menu_item_id', parseInt(id));
 
     if (error) throw new Error(`Failed to update menu item: ${error.message}`);
+  },
+
+  async updateMenuItemFdcId(menuItemId: string, fdcId: number | null): Promise<void> {
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ usda_fdc_id: fdcId })
+      .eq('menu_item_id', parseInt(menuItemId));
+
+    if (error) throw new Error(`Failed to update menu item USDA FDC ID: ${error.message}`);
   },
 
   async createMenuItem(item: {
