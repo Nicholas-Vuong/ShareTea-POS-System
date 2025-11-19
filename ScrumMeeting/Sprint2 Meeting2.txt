@@ -1,0 +1,36 @@
+SCRUM Meeting 2 - Agenda & Minutes
+Meeting Date: Wednesday, 11/19
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+The previous meeting focused on backend–frontend API integration, error recovery planning, and establishing feature-level acceptance criteria. The team aligned on completing all API-related features before progressing to the major UI components of Sprint 2.
+
+Agenda Items:
+- Review completed APIs and verify system stability
+- Validate error recovery and translation flows
+- Reassess remaining tasks and story points
+- Prepare for UI development (checkout, category cycle, availability)
+
+Status Update:
+Accomplishments:
+- All API endpoints for Sprint 2 successfully integrated.
+- Error recovery functioning reliably across multiple scenarios.
+- Translation system prepared for full UI integration.
+- Auto-refresh and availability sync tested successfully.
+
+Tasks Completed:
+Price Updates - sudeep.pasula - yes
+High-contrast Mode - rahulsaravanakumar - yes
+Item Availability Sync - sudeep.pasula - yes
+Category Cycle - rahulsaravanakumar - yes
+Timer Alert - hrudithl - yes
+Status Update Reflection - rahulsaravanakumar - yes
+
+Next Steps:
+Finalize major UI flows including checkout and order confirmation. Complete accessibility validation, device testing, and integration polishing.
+
+Assignments:
+Checkout Screen QA - rahulgonsalves
+Accessibility Validation - rahulsaravanakumar
+Auto-refresh Stability - sudeep.pasula
+Order Confirmation Tests - rahulgonsalves
