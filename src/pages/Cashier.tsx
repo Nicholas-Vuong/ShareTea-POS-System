@@ -1,16 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MenuItem, api } from '@/lib/api';
 import { MenuList } from '@/components/MenuList';
 import { ItemCustomizer } from '@/components/ItemCustomizer';
 import { CartPanel } from '@/components/CartPanel';
 import { CartReview } from '@/components/CartReview';
-import { Checkout } from '@/components/Checkout';
+import { CashierCheckout } from '@/components/CashierCheckout';
 import { CashierReceipt } from '@/components/CashierReceipt';
-import { useCartStore, CartItemOptions } from '@/store/cartStore';
+import { useCartStore, CartItemOptions, CartItem } from '@/store/cartStore';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Search, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -46,10 +56,16 @@ export default function Cashier() {
     paymentMethod: string;
     promoCode: string | null;
   } | null>(null);
-  const { addItem, clearCart, items, getTotal } = useCartStore();
+  const { addItem, clearCart, items, getTotal, updateItemByIndex } = useCartStore();
   const { toast } = useToast();
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
+  const [editContext, setEditContext] = useState<{ index: number; item: CartItem; returnView: View } | null>(null);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const pendingNavigation = useRef<(() => void) | null>(null);
+  const editingInitialOptions = editContext?.item.options;
+  const editingInitialQuantity = editContext?.item.quantity ?? 1;
+  const isEditingItem = Boolean(editContext);
 
   useEffect(() => {
     api.getMenu()
@@ -69,31 +85,113 @@ export default function Cashier() {
       });
   }, [toast]);
 
+  const resetCustomizationState = (nextView?: View) => {
+    setSelectedItem(null);
+    setEditContext(null);
+    if (nextView) {
+      setView(nextView);
+    }
+  };
+
+  const requestNavigationConfirmation = (action: () => void) => {
+    if (selectedItem) {
+      pendingNavigation.current = action;
+      setIsCancelDialogOpen(true);
+      return;
+    }
+    action();
+  };
+
+  const handleKeepEditing = () => {
+    setIsCancelDialogOpen(false);
+    pendingNavigation.current = null;
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      handleKeepEditing();
+    } else {
+      setIsCancelDialogOpen(true);
+    }
+  };
+
+  const handleConfirmCancel = () => {
+    resetCustomizationState();
+    setIsCancelDialogOpen(false);
+    const action = pendingNavigation.current;
+    pendingNavigation.current = null;
+    action?.();
+  };
+
+  const handleExitCustomizer = () => {
+    const destination = editContext?.returnView ?? 'menu';
+    requestNavigationConfirmation(() => {
+      setView(destination);
+    });
+  };
+
   const handleAddToCart = (item: MenuItem, quantity: number, options: CartItemOptions) => {
-    addItem({
+    const cartItemPayload = {
       menuItemId: item.id,
       name: item.name,
       quantity,
       options,
       price: item.price,
       subtotal: item.price * quantity,
-    });
-    setSelectedItem(null);
-    toast({
-      title: 'Added to cart',
-      description: `${quantity}x ${item.name}`,
-    });
+    };
+
+    if (isEditingItem && editContext) {
+      const { index, returnView } = editContext;
+      updateItemByIndex(index, cartItemPayload);
+      resetCustomizationState(returnView);
+      toast({
+        title: 'Cart item updated',
+        description: `${quantity}x ${item.name}`,
+      });
+    } else {
+      addItem(cartItemPayload);
+      resetCustomizationState();
+      toast({
+        title: 'Added to cart',
+        description: `${quantity}x ${item.name}`,
+      });
+    }
   };
 
   const handleCartCheckout = () => {
-    setView('cartReview');
+    requestNavigationConfirmation(() => setView('cartReview'));
   };
 
   const handleProceedToCheckout = () => {
     setView('checkout');
   };
 
-  const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null) => {
+  const handleEditCartItem = (index: number) => {
+    const cartItem = items[index];
+    if (!cartItem) return;
+
+    const menuItem = menu.find((menuEntry) => menuEntry.id === cartItem.menuItemId);
+
+    if (!menuItem) {
+      toast({
+        title: 'Unable to edit item',
+        description: 'The original drink is no longer available.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSelectedCategory(menuItem.category);
+    setSelectedItem(menuItem);
+    setEditContext({
+      index,
+      item: cartItem,
+      returnView: 'cartReview',
+    });
+    setView('menu');
+  };
+
+  const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null, customerId?: string) => {
     try {
       const cartItems = useCartStore.getState().items;
       const subtotal = getTotal();
@@ -120,6 +218,7 @@ export default function Cashier() {
         paymentMethod,
         promoCode,
         discount,
+        customerId: customerId,
       });
       
       // Prepare receipt data
@@ -153,27 +252,48 @@ export default function Cashier() {
         title: 'Order placed!',
         description: `Order #${order.orderId.slice(-6)} has been sent to the kitchen.`,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Order creation error:', error);
       toast({
         title: 'Order failed',
-        description: 'Please try again',
+        description: error?.message || 'Please try again',
         variant: 'destructive',
       });
     }
   };
 
   const handleNewOrder = () => {
+    resetCustomizationState();
     setView('menu');
     setOrderData(null);
   };
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    requestNavigationConfirmation(() => {
+      logout();
+      navigate('/login');
+    });
   };
 
   const filteredMenu = menu.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const cancelDialog = (
+    <AlertDialog open={isCancelDialogOpen} onOpenChange={handleDialogOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel current drink?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will discard your current customizations.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleKeepEditing}>Keep Editing</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmCancel}>Cancel Item</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   if (view === 'cartReview') {
@@ -189,7 +309,9 @@ export default function Cashier() {
         <CartReview
           onBack={() => setView('menu')}
           onProceed={handleProceedToCheckout}
+          onEditItem={handleEditCartItem}
         />
+        {cancelDialog}
       </div>
     );
   }
@@ -204,10 +326,11 @@ export default function Cashier() {
             Logout
           </Button>
         </header>
-        <Checkout
+        <CashierCheckout
           onBack={() => setView('cartReview')}
           onComplete={handleCompleteOrder}
         />
+        {cancelDialog}
       </div>
     );
   }
@@ -234,6 +357,7 @@ export default function Cashier() {
           promoCode={orderData.promoCode}
           onNewOrder={handleNewOrder}
         />
+        {cancelDialog}
       </div>
     );
   }
@@ -249,8 +373,12 @@ export default function Cashier() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col p-6 overflow-y-auto">
-          <div className="mb-6 space-y-4">
+        <div className="w-96 border-r p-6 bg-muted/30 flex-shrink-0 overflow-y-auto">
+          <CartPanel onCheckout={handleCartCheckout} />
+        </div>
+
+        <div className="flex-1 flex flex-col p-6 min-w-0 overflow-hidden">
+          <div className="mb-6 space-y-4 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
@@ -272,28 +400,37 @@ export default function Cashier() {
             </Tabs>
           </div>
 
-          {selectedItem ? (
-            <ItemCustomizer
-              itemName={selectedItem.name}
-              itemPrice={selectedItem.price}
-              onAddToCart={(quantity, options) =>
-                handleAddToCart(selectedItem, quantity, options)
-              }
-              onCancel={() => setSelectedItem(null)}
-            />
-          ) : (
-            <MenuList
-              items={filteredMenu}
-              onSelect={setSelectedItem}
-              selectedCategory={selectedCategory}
-            />
-          )}
-        </div>
-
-        <div className="w-96 border-l p-6 bg-muted/30">
-          <CartPanel onCheckout={handleCartCheckout} />
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {selectedItem ? (
+              <div className="h-full overflow-y-auto">
+                <div className="min-h-full">
+                  <ItemCustomizer
+                    menuItemId={selectedItem.id}
+                    itemName={selectedItem.name}
+                    itemPrice={selectedItem.price}
+                    initialOptions={editingInitialOptions}
+                    initialQuantity={editingInitialQuantity}
+                    mode={isEditingItem ? 'edit' : 'add'}
+                    onAddToCart={(quantity, options) =>
+                      handleAddToCart(selectedItem, quantity, options)
+                    }
+                    onCancel={handleExitCustomizer}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="h-full overflow-y-auto">
+                <MenuList
+                  items={filteredMenu}
+                  onSelect={setSelectedItem}
+                  selectedCategory={search ? undefined : selectedCategory}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
+      {cancelDialog}
     </div>
   );
 }
