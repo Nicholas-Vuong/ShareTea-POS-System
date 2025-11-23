@@ -1,0 +1,38 @@
+SCRUM Meeting 3 - Agenda & Minutes
+Meeting Date: Sunday, 11/23
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+The team focused on UI integration for translation, category routing, availability updates, and accessibility. Final steps toward completing checkout, item selection, and order confirmation were planned and assigned.
+
+Agenda Items:
+- Final validation of Sprint 2 deliverables
+- Verify acceptance criteria for all completed tasks
+- Prepare content for Sprint 2 demo and written materials
+- Clarify Sprint 3 backlog priorities
+
+Status Update:
+Accomplishments:
+- Checkout flow fully functional and bug-tested.
+- Order confirmation screen implemented successfully.
+- Language toggle and translation integrated across main UI.
+- Item selection and category cycling completed.
+- Welcome screen finalized and deployed.
+- All Sprint 2 tasks completed.
+
+Tasks Completed:
+Auto-refresh View - rahulgonsalves - yes
+Checkout Screen - rahulsaravanakumar - yes
+Language Toggle - rahulgonsalves - yes
+Order Confirmation - rahulgonsalves - yes
+Item Selection - hrudithl - yes
+Welcome Screen - sudeep.pasula - yes
+
+Next Steps:
+Prepare Sprint 3 backlog, finalize above-and-beyond features, and begin regression testing across Sprint 1 and 2.
+
+Assignments:
+Regression Testing (Sprint 1 & 2) - Entire Team
+Sprint 3 Backlog Setup - jhanghirbabar, nicholas_vuong
+UI Enhancements for Sprint 3 - hrudithl, sudeep.pasula
+Data Consistency Review - rahulsaravanakumar
