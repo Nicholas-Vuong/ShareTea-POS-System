@@ -21,6 +21,7 @@ export interface Database {
           active: boolean;
           default_price: number;
           description: string | null;
+          usda_fdc_id: number | null;
           created_at: string;
         };
         Insert: {
@@ -30,6 +31,7 @@ export interface Database {
           active?: boolean;
           default_price: number;
           description?: string | null;
+          usda_fdc_id?: number | null;
           created_at?: string;
         };
         Update: {
@@ -39,6 +41,7 @@ export interface Database {
           active?: boolean;
           default_price?: number;
           description?: string | null;
+          usda_fdc_id?: number | null;
           created_at?: string;
         };
       };

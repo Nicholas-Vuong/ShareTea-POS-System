@@ -9,7 +9,10 @@ import Kiosk from "./pages/Kiosk";
 import Kitchen from "./pages/Kitchen";
 import MenuBoards from "./pages/MenuBoards";
 import Manager from "./pages/Manager";
+import Customer from "./pages/Customer";
 import NotFound from "./pages/NotFound";
+import Unauthorized from "./pages/Unauthorized";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -22,11 +25,48 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/cashier" element={<Cashier />} />
-          <Route path="/kiosk" element={<Kiosk />} />
-          <Route path="/kitchen" element={<Kitchen />} />
+          <Route
+            path="/cashier"
+            element={
+              <ProtectedRoute allowedRoles={['cashier']} allowManagerOverride>
+                <Cashier />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kiosk"
+            element={
+              <ProtectedRoute allowedRoles={['customer']} allowManagerOverride>
+                <Kiosk />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/customer"
+            element={
+              <ProtectedRoute allowedRoles={['customer']} allowManagerOverride>
+                <Customer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kitchen"
+            element={
+              <ProtectedRoute allowedRoles={['barista']} allowManagerOverride>
+                <Kitchen />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/menu-boards" element={<MenuBoards />} />
-          <Route path="/manager" element={<Manager />} />
+          <Route
+            path="/manager"
+            element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <Manager />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/unauthorized" element={<Unauthorized />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

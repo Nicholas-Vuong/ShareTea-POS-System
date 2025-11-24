@@ -40,3 +40,5 @@ bun.lockb
 yarn.lock
 pnpm-lock.yaml
 
+# Github links
+github_links.ps1
