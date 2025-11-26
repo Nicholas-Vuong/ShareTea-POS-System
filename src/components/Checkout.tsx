@@ -5,12 +5,13 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 interface CheckoutProps {
   onBack: () => void;
   onComplete: (paymentMethod: string, promoCode: string | null) => void;
+  isSubmitting?: boolean;
 }
 
 const translations = {
@@ -64,7 +65,7 @@ const validatePromoCode = (code: string): number => {
   return promoCodes[code.toUpperCase()] || 0;
 };
 
-export const Checkout = ({ onBack, onComplete }: CheckoutProps) => {
+export const Checkout = ({ onBack, onComplete, isSubmitting = false }: CheckoutProps) => {
   const { items, getTotal } = useCartStore();
   const t = useTranslation(translations);
 
@@ -235,9 +236,16 @@ export const Checkout = ({ onBack, onComplete }: CheckoutProps) => {
               onClick={handleComplete}
               className="w-full mt-6 touch-target"
               size="lg"
-              disabled={items.length === 0}
+              disabled={items.length === 0 || isSubmitting}
             >
-              {t.completeOrder}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                t.completeOrder
+              )}
             </Button>
           </Card>
         </div>
