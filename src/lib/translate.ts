@@ -97,8 +97,122 @@ interface TranslationCache {
   [key: string]: string;
 }
 
-// Cache to avoid repeated API calls for the same text
+interface StoredTranslation {
+  text: string;
+  timestamp: number;
+}
+
+const TRANSLATION_CACHE_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const TRANSLATION_CACHE_KEY_PREFIX = 'sharetea-translation-';
+
+// In-memory cache to avoid repeated API calls for the same text
 const translationCache: Map<string, TranslationCache> = new Map();
+
+/**
+ * Get translation from localStorage cache
+ */
+function getCachedTranslation(text: string, targetLang: LanguageCode, sourceLang: LanguageCode): string | null {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const cacheKey = `${TRANSLATION_CACHE_KEY_PREFIX}${sourceLang}-${targetLang}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) return null;
+    
+    const cache: TranslationCache = JSON.parse(cached);
+    const stored: StoredTranslation | undefined = cache[text];
+    
+    if (stored) {
+      // Check if translation has expired
+      if (Date.now() - stored.timestamp > TRANSLATION_CACHE_EXPIRATION_MS) {
+        // Expired, remove it
+        delete cache[text];
+        localStorage.setItem(cacheKey, JSON.stringify(cache));
+        return null;
+      }
+      return stored.text;
+    }
+  } catch (error) {
+    console.warn('Error reading translation cache:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Save translation to localStorage cache
+ */
+function saveCachedTranslation(text: string, translated: string, targetLang: LanguageCode, sourceLang: LanguageCode): void {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const cacheKey = `${TRANSLATION_CACHE_KEY_PREFIX}${sourceLang}-${targetLang}`;
+    let cache: TranslationCache = {};
+    
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      cache = JSON.parse(cached);
+    }
+    
+    cache[text] = {
+      text: translated,
+      timestamp: Date.now(),
+    };
+    
+    localStorage.setItem(cacheKey, JSON.stringify(cache));
+  } catch (error) {
+    console.warn('Error saving translation cache:', error);
+    // If storage is full, try to clean up old entries
+    try {
+      cleanupExpiredTranslations();
+    } catch (e) {
+      console.warn('Error cleaning up translation cache:', e);
+    }
+  }
+}
+
+/**
+ * Clean up expired translations from localStorage
+ */
+function cleanupExpiredTranslations(): void {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const now = Date.now();
+    const keys = Object.keys(localStorage);
+    
+    for (const key of keys) {
+      if (key.startsWith(TRANSLATION_CACHE_KEY_PREFIX)) {
+        try {
+          const cache: TranslationCache = JSON.parse(localStorage.getItem(key) || '{}');
+          let hasChanges = false;
+          
+          for (const text in cache) {
+            const stored = cache[text] as StoredTranslation;
+            if (stored && stored.timestamp && now - stored.timestamp > TRANSLATION_CACHE_EXPIRATION_MS) {
+              delete cache[text];
+              hasChanges = true;
+            }
+          }
+          
+          if (hasChanges) {
+            localStorage.setItem(key, JSON.stringify(cache));
+          }
+        } catch (e) {
+          // Invalid cache entry, remove it
+          localStorage.removeItem(key);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Error cleaning up translation cache:', error);
+  }
+}
+
+// Clean up on module load (runs once)
+if (typeof window !== 'undefined') {
+  cleanupExpiredTranslations();
+}
 
 /**
  * Translate text using Google Translate
@@ -117,7 +231,19 @@ export async function translateText(
     return text;
   }
 
-  // Check cache first
+  // Check localStorage cache first
+  const cachedTranslation = getCachedTranslation(text, targetLang, sourceLang);
+  if (cachedTranslation) {
+    // Also update in-memory cache
+    const cacheKey = `${sourceLang}-${targetLang}`;
+    if (!translationCache.has(cacheKey)) {
+      translationCache.set(cacheKey, {});
+    }
+    translationCache.get(cacheKey)![text] = cachedTranslation;
+    return cachedTranslation;
+  }
+  
+  // Check in-memory cache
   const cacheKey = `${sourceLang}-${targetLang}`;
   if (!translationCache.has(cacheKey)) {
     translationCache.set(cacheKey, {});
@@ -167,8 +293,9 @@ export async function translateText(
       translatedText = translatedParts.join(' ') || text;
     }
 
-    // Cache the translation
+    // Cache the translation in both in-memory and localStorage
     cache[text] = translatedText;
+    saveCachedTranslation(text, translatedText, targetLang, sourceLang);
     return translatedText;
   } catch (error: any) {
     if (error.name === 'AbortError') {

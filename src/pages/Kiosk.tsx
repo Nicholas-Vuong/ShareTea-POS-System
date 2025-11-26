@@ -25,15 +25,19 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ArrowLeft, Home, LogOut, History } from 'lucide-react';
+import { ArrowLeft, Home, LogOut, History, ShoppingCart } from 'lucide-react';
 import { translateText, translateMultiple } from '@/lib/translate';
 import { useAuthStore } from '@/store/authStore';
 import { OrderHistory } from '@/components/OrderHistory';
+import { calculateItemPrice } from '@/lib/pricing';
 
 // Base English translations
 const baseTranslations = {
     welcome: 'Welcome to Sharetea',
     selectCategory: 'Select a category to start your order',
+    suggestedTitle: 'Suggested for you',
+    suggestedSubtitle: 'Popular picks and unique favorites',
+    viewItem: 'Customize this drink',
     backToMenu: 'Back to Menu',
     home: 'Home',
     orderConfirmed: 'Order Confirmed!',
@@ -47,7 +51,7 @@ const baseTranslations = {
     viewCart: 'View Cart',
     cancelItemTitle: 'Cancel current drink?',
     cancelItemDescription: 'This will discard your current customizations.',
-    cancelItem: 'Cancel Item',
+    cancelItem: 'Cancel Edits',
     keepEditing: 'Keep Editing',
     updatedCartItem: 'Cart item updated',
     editUnavailable: 'Unable to edit item',
@@ -55,6 +59,9 @@ const baseTranslations = {
     pastOrders: 'Past Orders',
     loadingOrders: 'Loading orders...',
     noOrdersFound: 'No orders found',
+    signInRequired: 'Sign In Required',
+    signInToViewOrders: 'Please sign in to view your past orders. Create an account to access order history and other features.',
+    createAccount: 'Create Account',
 };
 
 type View = 'home' | 'menu' | 'cart' | 'cartReview' | 'checkout' | 'receipt' | 'pastOrders';
@@ -64,6 +71,8 @@ export default function Kiosk() {
     const [categories, setCategories] = useState<string[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+    const [suggestedItems, setSuggestedItems] = useState<MenuItem[]>([]);
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [view, setView] = useState<View>('home');
     const [orderNumber, setOrderNumber] = useState('');
     const [orderData, setOrderData] = useState<{
@@ -203,6 +212,64 @@ export default function Kiosk() {
             });
     }, [toast, language]);
 
+    // Build suggested items (top sellers if available, otherwise featured fallbacks)
+    useEffect(() => {
+        if (menu.length === 0) return;
+        let cancelled = false;
+
+        const buildSuggestions = async () => {
+            setLoadingSuggestions(true);
+            try {
+                const activeItems = menu.filter((item) => item.active);
+                if (activeItems.length === 0) {
+                    if (!cancelled) setSuggestedItems([]);
+                    return;
+                }
+
+                let suggestions: MenuItem[] = [];
+
+                try {
+                    const salesData = await api.getSalesData(30);
+                    const topNames = (salesData.topItems || []).slice(0, 6).map((t) => t.name.toLowerCase());
+                    const matched = activeItems.filter(
+                        (item) => topNames.includes(item.name.toLowerCase())
+                    );
+                    suggestions = matched.slice(0, 4);
+                } catch (error) {
+                    console.warn('Falling back to static suggestions:', error);
+                }
+
+                // Fill remaining slots with highest-priced unique items for variety
+                if (suggestions.length < 4) {
+                    const usedIds = new Set(suggestions.map((s) => s.id));
+                    const byPriceDesc = [...activeItems]
+                        .filter((item) => !usedIds.has(item.id))
+                        .sort((a, b) => b.price - a.price);
+                    suggestions = [...suggestions, ...byPriceDesc.slice(0, 4 - suggestions.length)];
+                }
+
+                // Final fallback: first few active items
+                if (suggestions.length < 3) {
+                    const remaining = activeItems.filter((i) => !suggestions.find((s) => s.id === i.id));
+                    suggestions = [...suggestions, ...remaining.slice(0, 3 - suggestions.length)];
+                }
+
+                if (!cancelled) {
+                    setSuggestedItems(suggestions.slice(0, 4));
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoadingSuggestions(false);
+                }
+            }
+        };
+
+        buildSuggestions();
+        return () => {
+            cancelled = true;
+        };
+    }, [menu]);
+
     // Fetch active order status when on home screen and user is logged in
     useEffect(() => {
         if (view !== 'home' || !user || user.role !== 'customer') {
@@ -283,6 +350,12 @@ export default function Kiosk() {
         setView('menu');
     };
 
+    const handleSuggestedSelect = (item: MenuItem) => {
+        setSelectedCategory(item.category);
+        setSelectedItem(item);
+        setView('menu');
+    };
+
     const resetCustomizationState = (nextView?: View) => {
         setSelectedItem(null);
         setEditContext(null);
@@ -338,13 +411,16 @@ export default function Kiosk() {
             }
         }
 
+        // Calculate price with customization modifiers
+        const itemPrice = calculateItemPrice(item.price, options.size, options.sugar, options.toppings);
+
         const cartItemPayload = {
             menuItemId: item.id,
             name: displayName,
             quantity,
             options,
-            price: item.price,
-            subtotal: item.price * quantity,
+            price: itemPrice,
+            subtotal: itemPrice * quantity,
         };
 
         const toastTitle = isEditingItem ? t('updatedCartItem') : t('addedToCart');
@@ -470,80 +546,157 @@ export default function Kiosk() {
 
             {view === 'home' && (
                 <div className="min-h-screen flex flex-col">
-                    <header className="bg-card border-b px-6 py-4 flex gap-4 justify-end">
-                        <Button
-                            variant="outline"
-                            onClick={() => setView('pastOrders')}
-                            className="touch-target"
-                        >
-                            <History className="h-4 w-4 mr-2" />
-                            {t('pastOrders')}
-                        </Button>
-                        <Button variant="outline" onClick={handleLogout} className="touch-target">
-                            <LogOut className="h-4 w-4 mr-2" />
-                            Logout
-                        </Button>
+                    <header className="bg-card border-b px-6 py-4 flex gap-4 justify-between items-center">
+                        <div className="flex gap-4">
+                            {items.length > 0 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setView('cartReview')}
+                                    className="touch-target"
+                                >
+                                    <ShoppingCart className="h-4 w-4 mr-2" />
+                                    {t('viewCart')} ({items.length})
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex gap-4">
+                            {user && user.role === 'customer' && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setView('pastOrders')}
+                                    className="touch-target"
+                                >
+                                    <History className="h-4 w-4 mr-2" />
+                                    {t('pastOrders')}
+                                </Button>
+                            )}
+                            {user ? (
+                                <Button variant="outline" onClick={handleLogout} className="touch-target">
+                                    <LogOut className="h-4 w-4 mr-2" />
+                                    Logout
+                                </Button>
+                            ) : (
+                                <Button variant="outline" onClick={() => navigate('/login')} className="touch-target">
+                                    Sign In
+                                </Button>
+                            )}
+                        </div>
                     </header>
 
-                    <div className="container mx-auto px-6 py-12 space-y-8 flex-1">
-                        <div className="text-center space-y-4">
+                    <div className="container mx-auto px-6 py-12 flex-1">
+                        <div className="text-center space-y-4 mb-12">
                             <h1 className="text-5xl font-bold text-primary">{t('welcome')}</h1>
                             <p className="text-2xl text-muted-foreground">{t('selectCategory')}</p>
                         </div>
 
-                        {activeOrder ? (
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <div className="lg:col-span-2">
-                                    <WeatherTile />
-                                </div>
-
-                                <Card className="p-6 bg-primary/5 border-primary/20">
-                                    <div className="space-y-3">
-                                        <h2 className="text-xl font-bold">Current Order Status</h2>
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-muted-foreground">Order #</span>
-                                                <span className="text-2xl font-bold">#{activeOrder.orderId.slice(-6)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-muted-foreground">Status</span>
-                                                <Badge className={
-                                                    activeOrder.status === 'PLACED' ? 'bg-yellow-500' :
-                                                        activeOrder.status === 'PREPARING' ? 'bg-blue-500' :
-                                                            activeOrder.status === 'READY' ? 'bg-green-500' :
-                                                                'bg-gray-500'
-                                                }>
-                                                    {activeOrder.status}
-                                                </Badge>
-                                            </div>
+                        {/* Active Order Bar - shown above categories when order exists */}
+                        {activeOrder && (
+                            <Card className="mb-8 p-4 bg-primary/10 border-primary/30">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <span className="text-sm text-muted-foreground">Order #</span>
+                                            <span className="text-2xl font-bold ml-2">#{activeOrder.orderId.slice(-6)}</span>
                                         </div>
-                                        <Button
-                                            variant="outline"
-                                            className="w-full mt-4"
-                                            onClick={() => navigate('/customer')}
-                                        >
-                                            View Order History
-                                        </Button>
+                                        <div className="h-8 w-px bg-border" />
+                                        <div>
+                                            <span className="text-sm text-muted-foreground">Status: </span>
+                                            <Badge className={
+                                                activeOrder.status === 'PLACED' ? 'bg-yellow-500' :
+                                                    activeOrder.status === 'PREPARING' ? 'bg-blue-500' :
+                                                        activeOrder.status === 'READY' ? 'bg-green-500' :
+                                                            'bg-gray-500'
+                                            }>
+                                                {activeOrder.status}
+                                            </Badge>
+                                        </div>
                                     </div>
-                                </Card>
-                            </div>
-                        ) : (
-                            <WeatherTile />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => navigate('/customer')}
+                                    >
+                                        View Order History
+                                    </Button>
+                                </div>
+                            </Card>
                         )}
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 pt-8">
-                            {categories.map((category) => {
-                                const translatedCategory = translatedCategories.get(category) || category;
-                                return (
-                                    <Card
-                                        key={category}
-                                        className="p-8 hover:shadow-xl transition-all cursor-pointer touch-target"
-                                        onClick={() => handleCategorySelect(category)}
-                                    >
-                                        <h2 className="text-3xl font-bold text-center">{translatedCategory}</h2>
-                                    </Card>
-                                );
-                            })}
+                        <div className="flex flex-col lg:flex-row gap-8 items-start">
+                            {/* Left side: Weather section - larger with more vertical content */}
+                            <div className="w-full lg:w-80 flex-shrink-0">
+                                <WeatherTile compact={false} />
+                            </div>
+
+                            {/* Middle: Categories */}
+                            <div className="flex-1 space-y-6 min-w-0">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+                                    {categories.map((category) => {
+                                        const translatedCategory = translatedCategories.get(category) || category;
+                                        return (
+                                            <Card
+                                                key={category}
+                                                className="p-10 hover:shadow-xl transition-all cursor-pointer touch-target flex items-center justify-center min-h-[140px]"
+                                                onClick={() => handleCategorySelect(category)}
+                                            >
+                                                <h2 className="text-2xl font-bold text-center leading-tight break-words">{translatedCategory}</h2>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Right side: Suggested items - takes up remaining space */}
+                            <div className="w-full lg:flex-1 lg:max-w-md flex-shrink-0">
+                                <Card className="p-6 space-y-4 shadow-sm sticky top-6 h-full">
+                                    <div>
+                                        <h2 className="text-xl font-bold">{t('suggestedTitle')}</h2>
+                                        <p className="text-sm text-muted-foreground mt-1">{t('suggestedSubtitle')}</p>
+                                    </div>
+
+                                    {loadingSuggestions && (
+                                        <p className="text-sm text-muted-foreground">Loading suggestions...</p>
+                                    )}
+
+                                    {!loadingSuggestions && suggestedItems.length === 0 && (
+                                        <p className="text-sm text-muted-foreground">Suggestions will appear here soon.</p>
+                                    )}
+
+                                    {!loadingSuggestions && suggestedItems.length > 0 && (
+                                        <div className="space-y-3">
+                                            {suggestedItems.map((item) => (
+                                                <Card
+                                                    key={item.id}
+                                                    className="p-4 border-muted/60 hover:border-primary transition-colors cursor-pointer"
+                                                    onClick={() => setSelectedItem(item)}
+                                                >
+                                                    <div className="flex flex-col gap-3">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-sm font-semibold line-clamp-1">{item.name}</h3>
+                                                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                                                    {item.description || 'Customer favorite'}
+                                                                </p>
+                                                            </div>
+                                                            <span className="text-sm font-bold text-primary flex-shrink-0">
+                                                                ${item.price.toFixed(2)}
+                                                            </span>
+                                                        </div>
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="w-full touch-target text-xs"
+                                                            onClick={() => handleSuggestedSelect(item)}
+                                                        >
+                                                            {t('viewItem')}
+                                                        </Button>
+                                                    </div>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Card>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -575,24 +728,32 @@ export default function Kiosk() {
                             </Button>
                         </div>
                         <div className="flex gap-4">
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    if (!selectedItem) {
-                                        setView('pastOrders');
-                                    } else {
-                                        requestNavigationConfirmation(() => setView('pastOrders'));
-                                    }
-                                }}
-                                className="touch-target"
-                            >
-                                <History className="h-4 w-4 mr-2" />
-                                {t('pastOrders')}
-                            </Button>
-                            <Button variant="outline" onClick={handleLogout} className="touch-target">
-                                <LogOut className="h-4 w-4 mr-2" />
-                                Logout
-                            </Button>
+                            {user && user.role === 'customer' && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        if (!selectedItem) {
+                                            setView('pastOrders');
+                                        } else {
+                                            requestNavigationConfirmation(() => setView('pastOrders'));
+                                        }
+                                    }}
+                                    className="touch-target"
+                                >
+                                    <History className="h-4 w-4 mr-2" />
+                                    {t('pastOrders')}
+                                </Button>
+                            )}
+                            {user ? (
+                                <Button variant="outline" onClick={handleLogout} className="touch-target">
+                                    <LogOut className="h-4 w-4 mr-2" />
+                                    Logout
+                                </Button>
+                            ) : (
+                                <Button variant="outline" onClick={() => navigate('/login')} className="touch-target">
+                                    Sign In
+                                </Button>
+                            )}
                         </div>
                     </header>
 
@@ -607,6 +768,7 @@ export default function Kiosk() {
                                     menuItemId={selectedItem.id}
                                     itemName={selectedItem.name}
                                     itemPrice={selectedItem.price}
+                                    temperatureOptions={selectedItem.temperatureOptions}
                                     initialOptions={editingInitialOptions}
                                     initialQuantity={editingInitialQuantity}
                                     mode={isEditingItem ? 'edit' : 'add'}
@@ -678,30 +840,54 @@ export default function Kiosk() {
                                 {t('home')}
                             </Button>
                         </div>
-                        <Button variant="outline" onClick={handleLogout} className="touch-target">
-                            <LogOut className="h-4 w-4 mr-2" />
-                            Logout
-                        </Button>
+                        {user ? (
+                            <Button variant="outline" onClick={handleLogout} className="touch-target">
+                                <LogOut className="h-4 w-4 mr-2" />
+                                Logout
+                            </Button>
+                        ) : (
+                            <Button variant="outline" onClick={() => navigate('/login')} className="touch-target">
+                                Sign In
+                            </Button>
+                        )}
                     </header>
 
                     <div className="flex-1 overflow-y-auto">
                         <div className="container mx-auto px-6 py-8 max-w-4xl">
-                            <div className="mb-6">
-                                <h1 className="text-3xl font-bold text-primary">{t('pastOrders')}</h1>
-                            </div>
-
-                            {loadingPastOrders ? (
-                                <div className="text-center py-12">
-                                    <p className="text-muted-foreground">{t('loadingOrders')}</p>
+                            {!user || user.role !== 'customer' ? (
+                                <div className="text-center py-12 space-y-4">
+                                    <h1 className="text-3xl font-bold text-primary">{t('signInRequired')}</h1>
+                                    <p className="text-muted-foreground max-w-md mx-auto">
+                                        {t('signInToViewOrders')}
+                                    </p>
+                                    <Button
+                                        onClick={() => navigate('/login')}
+                                        className="touch-target"
+                                        size="lg"
+                                    >
+                                        {t('createAccount')}
+                                    </Button>
                                 </div>
                             ) : (
-                                <OrderHistory
-                                    orders={pastOrders}
-                                    onOrderClick={(order) => {
-                                        // Could show order details in the future
-                                        console.log('Order clicked:', order);
-                                    }}
-                                />
+                                <>
+                                    <div className="mb-6">
+                                        <h1 className="text-3xl font-bold text-primary">{t('pastOrders')}</h1>
+                                    </div>
+
+                                    {loadingPastOrders ? (
+                                        <div className="text-center py-12">
+                                            <p className="text-muted-foreground">{t('loadingOrders')}</p>
+                                        </div>
+                                    ) : (
+                                        <OrderHistory
+                                            orders={pastOrders}
+                                            onOrderClick={(order) => {
+                                                // Could show order details in the future
+                                                console.log('Order clicked:', order);
+                                            }}
+                                        />
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>

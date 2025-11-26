@@ -6,6 +6,26 @@
 import { supabase } from './supabase';
 import bcrypt from 'bcryptjs';
 
+// Create a Supabase client with auth configured for OAuth
+// Using the same URL and key as the main supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Import Supabase client constructor
+import { createClient } from '@supabase/supabase-js';
+
+// Create auth client with proper configuration
+const supabaseAuth = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        persistSession: true,
+        autoRefreshToken: true,
+        flowType: 'pkce',
+      },
+    })
+  : null;
+
 /**
  * Menu item interface representing a product available for purchase
  */
@@ -16,6 +36,27 @@ export interface MenuItem {
   price: number;
   description: string;
   active: boolean;
+  temperatureOptions?: ('Hot' | 'Cold')[];
+}
+
+/**
+ * Helper function to parse temperature_options from database
+ */
+function parseTemperatureOptions(item: any): ('Hot' | 'Cold')[] {
+  let temperatureOptions: ('Hot' | 'Cold')[] = ['Hot', 'Cold'];
+  if (item.temperature_options) {
+    try {
+      const tempOpts = Array.isArray(item.temperature_options) 
+        ? item.temperature_options 
+        : JSON.parse(item.temperature_options);
+      temperatureOptions = tempOpts.map((t: string) => 
+        t.toLowerCase() === 'hot' ? 'Hot' : 'Cold'
+      );
+    } catch (e) {
+      console.warn('Failed to parse temperature_options:', e);
+    }
+  }
+  return temperatureOptions;
 }
 
 export interface LowStockItem {
@@ -59,6 +100,169 @@ export interface SalesData {
   categorySales: Array<{ category: string; sales: number }>;
 }
 
+export interface ReportSummary {
+  grossSales: number;
+  netSales: number;
+  tax: number;
+  discounts: number;
+  refunds: number;
+  orderCount: number;
+  tenders: Record<string, number>;
+  tips: number;
+  expectedCash: number;
+  range: {
+    start: string;
+    end: string;
+    label: string;
+    type: '24h' | '7d' | '30d' | 'custom';
+  };
+}
+
+export interface OrderSummary {
+  orderId: string;
+  createdAt: string;
+  total: number;
+  paymentMethod?: string;
+  status?: string;
+}
+
+export interface PaymentBreakdown {
+  [method: string]: { amount: number; count: number };
+}
+
+export interface HourlyMetric {
+  hour: number;
+  total: number;
+  orders: number;
+}
+
+export interface DailyMetric {
+  date: string;
+  total: number;
+  orders: number;
+  avgOrderValue: number;
+}
+
+export interface TopItemMetric {
+  name: string;
+  quantity: number;
+  revenue: number;
+  orderCount: number;
+}
+
+export interface ZReportDay {
+  date: string;
+  total: number;
+  orders: number;
+  avgOrderValue: number;
+  payments: PaymentBreakdown;
+  hourly: HourlyMetric[];
+}
+
+export interface OrdersAnalytics {
+  range: { start: string; end: string; label: string; type: '24h' | '7d' | '30d' | 'custom' };
+  orderHistory: OrderSummary[];
+  daily: DailyMetric[];
+  hourly: HourlyMetric[];
+  dayOfWeek: Array<{ dow: string; total: number; orders: number }>;
+  paymentBreakdown: PaymentBreakdown;
+  topItems: TopItemMetric[];
+  totalOrderCount?: number; // Total count from database (may be more than orderHistory.length)
+  xReport: {
+    total: number;
+    orders: number;
+    avgOrderValue: number;
+    payments: PaymentBreakdown;
+    hourly: HourlyMetric[];
+  };
+  zReport: {
+    perDay: ZReportDay[];
+    aggregate: {
+      total: number;
+      orders: number;
+      avgOrderValue: number;
+      payments: PaymentBreakdown;
+    };
+  };
+}
+
+/**
+ * Builds a time window for reports.
+ * X report -> last 12 hours
+ * Z report -> current day (midnight to now)
+ * Custom -> provided ISO dates (inclusive)
+ */
+export function buildReportRange(
+  type: '24h' | '7d' | '30d' | 'custom' = '7d',
+  from?: string,
+  to?: string
+): { start: string; end: string; label: string; type: '24h' | '7d' | '30d' | 'custom' } {
+  const now = new Date();
+  const allowedTypes: Array<'24h' | '7d' | '30d' | 'custom'> = ['24h', '7d', '30d', 'custom'];
+  const normalizedType = allowedTypes.includes(type) ? type : '7d';
+
+  // Parse a YYYY-MM-DD string into a UTC midnight Date to avoid timezone drift
+  const parseDateOnlyToUTC = (value: string) => {
+    const [year, month, day] = value.split('-').map((n) => parseInt(n, 10));
+    return new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1));
+  };
+
+  if (normalizedType === 'custom' && from && to) {
+    // Normalize to full-day UTC boundaries and guard against inverted ranges
+    let startDate = parseDateOnlyToUTC(from);
+    let endDate = parseDateOnlyToUTC(to);
+    if (startDate > endDate) {
+      [from, to] = [to, from];
+      startDate = parseDateOnlyToUTC(from);
+      endDate = parseDateOnlyToUTC(to);
+    }
+    startDate.setUTCHours(0, 0, 0, 0);
+    endDate.setUTCHours(23, 59, 59, 999);
+
+    const label = `${from} → ${to}`;
+
+    return {
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      label,
+      type: normalizedType,
+    };
+  }
+
+  if (normalizedType === '24h') {
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return {
+      start: start.toISOString(),
+      end: now.toISOString(),
+      label: 'Last 24 hours',
+      type: normalizedType,
+    };
+  }
+
+  if (normalizedType === '7d') {
+    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const start = new Date(startOfTodayUtc);
+    start.setUTCDate(start.getUTCDate() - 6); // inclusive of today -> 7 total days
+    return {
+      start: start.toISOString(),
+      end: now.toISOString(),
+      label: 'Last 7 days',
+      type: normalizedType,
+    };
+  }
+
+  // 30d
+  const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const start = new Date(startOfTodayUtc);
+  start.setUTCDate(start.getUTCDate() - 29); // inclusive of today -> 30 total days
+  return {
+    start: start.toISOString(),
+    end: now.toISOString(),
+    label: 'Last 30 days',
+    type: '30d',
+  };
+}
+
 export interface OrderItem {
   menuItemId: string;
   quantity: number;
@@ -66,6 +270,7 @@ export interface OrderItem {
     size: string;
     sugar: number;
     ice: string;
+    temperature?: string;
     toppings: string[];
   };
 }
@@ -108,22 +313,130 @@ export const api = {
    * @returns Array of active menu items sorted by category
    */
   async getMenu(): Promise<MenuItem[]> {
-    const { data, error } = await supabase
+    // Check if Supabase is configured
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+    }
+
+    // Try using authenticated client if available (for RLS policies)
+    let clientToUse = supabase;
+    if (supabaseAuth) {
+      const { data: { session } } = await supabaseAuth.auth.getSession();
+      if (session) {
+        clientToUse = supabaseAuth;
+      }
+    }
+
+    // Try querying with 'active' column first (Supabase schema)
+    let { data, error } = await clientToUse
       .from('menu_items')
       .select('*')
       .eq('active', true)
       .order('category', { ascending: true });
 
-    if (error) throw new Error(`Failed to fetch menu: ${error.message}`);
+    // Log the full error for debugging
+    if (error) {
+      console.error('Menu fetch error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+    }
 
-    // Transform database schema to frontend interface
-    return (data || []).map((item) => ({
-      id: item.menu_item_id.toString(),
+    // If that fails due to column name, try with 'is_available' column (alternative schema)
+    if (error && (error.message?.includes('column') || error.message?.includes('does not exist'))) {
+      const fallbackQuery = await clientToUse
+        .from('menu_items')
+        .select('*')
+        .eq('is_available', true)
+        .order('category', { ascending: true });
+      
+      if (!fallbackQuery.error && fallbackQuery.data) {
+        data = fallbackQuery.data;
+        error = null;
+        
+        // Transform alternative schema to frontend interface
+        return (data || []).map((item: any) => {
+          // Parse temperature_options from JSONB or default to both hot and cold
+          let temperatureOptions: ('Hot' | 'Cold')[] = ['Hot', 'Cold'];
+          if (item.temperature_options) {
+            try {
+              const tempOpts = Array.isArray(item.temperature_options) 
+                ? item.temperature_options 
+                : JSON.parse(item.temperature_options);
+              temperatureOptions = tempOpts.map((t: string) => 
+                t.toLowerCase() === 'hot' ? 'Hot' : 'Cold'
+              );
+            } catch (e) {
+              console.warn('Failed to parse temperature_options:', e);
+            }
+          }
+          
+          return {
+            id: (item.menu_item_id || item.id).toString(),
+            name: item.name,
+            category: item.category || 'Uncategorized',
+            price: parseFloat((item.default_price || item.price || 0).toString()),
+            description: item.description || '',
+            active: item.active !== undefined ? item.active : (item.is_available !== undefined ? item.is_available : true),
+            temperatureOptions,
+          };
+        });
+      }
+    }
+
+    // If still error, try without filtering by active/is_available
+    if (error) {
+      const noFilterQuery = await clientToUse
+        .from('menu_items')
+        .select('*')
+        .order('category', { ascending: true });
+      
+      if (!noFilterQuery.error && noFilterQuery.data) {
+        data = noFilterQuery.data;
+        error = null;
+        
+        // Filter in JavaScript if needed
+        const filteredData = (data || []).filter((item: any) => {
+          if (item.active !== undefined) return item.active;
+          if (item.is_available !== undefined) return item.is_available;
+          return true; // Include if no availability field
+        });
+        
+        return filteredData.map((item: any) => ({
+          id: (item.menu_item_id || item.id).toString(),
+          name: item.name,
+          category: item.category || 'Uncategorized',
+          price: parseFloat((item.default_price || item.price || 0).toString()),
+          description: item.description || '',
+          active: item.active !== undefined ? item.active : (item.is_available !== undefined ? item.is_available : true),
+          temperatureOptions: parseTemperatureOptions(item),
+        }));
+      }
+    }
+
+    if (error) {
+      // Provide more helpful error message based on error code
+      if (error.code === 'PGRST116' || error.message?.includes('permission denied') || error.message?.includes('policy')) {
+        throw new Error('Row Level Security (RLS) policy is blocking access to menu_items. Please create a SELECT policy that allows public read access, or contact your administrator.');
+      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+        throw new Error('Authentication error. Please try logging in again.');
+      } else if (error.message?.includes('relation') || error.message?.includes('does not exist')) {
+        throw new Error('Menu table not found. Please contact administrator.');
+      }
+      throw new Error(`Failed to fetch menu: ${error.message || 'Unknown error'}. Error code: ${error.code || 'N/A'}`);
+    }
+
+    // Transform database schema to frontend interface (Supabase schema)
+    return (data || []).map((item: any) => ({
+      id: (item.menu_item_id || item.id).toString(),
       name: item.name,
       category: item.category || 'Uncategorized',
-      price: parseFloat(item.default_price.toString()),
+      price: parseFloat((item.default_price || item.price || 0).toString()),
       description: item.description || '',
-      active: item.active,
+      active: item.active !== undefined ? item.active : true,
+      temperatureOptions: parseTemperatureOptions(item),
     }));
   },
 
@@ -617,18 +930,50 @@ export const api = {
   },
 
   /**
+   * Finds a customer by email only
+   * Used when cashier wants to lookup customer using just email
+   * @param email - Customer email address
+   * @returns Customer info if found, null otherwise
+   */
+  async findCustomerByEmail(email: string): Promise<{ userId: string; fullName: string } | null> {
+    if (!email || !email.trim()) {
+      return null;
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    
+    const { data: existingUser, error: lookupError } = await supabase
+      .from('users')
+      .select('user_id, role_id, roles(role_name), full_name')
+      .eq('email', trimmedEmail)
+      .maybeSingle();
+
+    if (existingUser && !lookupError) {
+      const roleName = (existingUser.roles as any)?.role_name?.toLowerCase() || '';
+      if (roleName === 'customer') {
+        return {
+          userId: existingUser.user_id.toString(),
+          fullName: existingUser.full_name || '',
+        };
+      }
+    }
+
+    return null;
+  },
+
+  /**
    * Finds an existing customer by email or creates a new customer account
    * Used when cashier creates orders for customers who may not have accounts
    * Creates customer with placeholder password that can be reset later
    * @param email - Customer email address (optional)
-   * @param fullName - Customer's full name
+   * @param fullName - Customer's full name (optional, will be derived from email if not provided)
    * @param phone - Customer phone number (optional, currently unused)
    * @returns Customer user ID if email provided, undefined for one-time orders
    * @throws Error if customer creation fails or role not found
    */
   async findOrCreateCustomer(
     email: string | undefined,
-    fullName: string,
+    fullName?: string,
     phone?: string
   ): Promise<string | undefined> {
     // If no email provided, return undefined (one-time order without account)
@@ -656,6 +1001,9 @@ export const api = {
     }
 
     // Customer doesn't exist, create new one
+    // Use provided fullName or derive from email
+    const nameToUse = fullName?.trim() || trimmedEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
     // Get Customer role_id
     const { data: allRoles, error: rolesError } = await supabase
       .from('roles')
@@ -703,7 +1051,7 @@ export const api = {
       .insert({
         username,
         password_hash: placeholderHash, // Placeholder hash - customer can reset password later
-        full_name: fullName,
+        full_name: nameToUse,
         role_id: customerRole.role_id,
         email: trimmedEmail,
       })
@@ -806,17 +1154,21 @@ export const api = {
    * @param password - Plain text password (will be hashed)
    * @param fullName - User's full name
    * @param role - User role (Manager, Cashier, Barista, or Customer)
-   * @param email - Optional email address
-   * @returns User ID, role, and optional email
-   * @throws Error if username/email exists, role invalid, or creation fails
+   * @param email - Required email address
+   * @returns User ID, role, and email
+   * @throws Error if username/email exists, role invalid, email missing, or creation fails
    */
   async signUp(
     username: string,
     password: string,
     fullName: string,
     role: 'Manager' | 'Cashier' | 'Barista' | 'Customer',
-    email?: string
-  ): Promise<{ userId: string; role: string; email?: string }> {
+    email: string
+  ): Promise<{ userId: string; role: string; email: string }> {
+    // Email is now required
+    if (!email || !email.trim()) {
+      throw new Error('Email is required');
+    }
     // Check if username already exists (case-insensitive)
     // Fetch all users and compare case-insensitively (Supabase doesn't support case-insensitive queries directly)
     const { data: allUsers } = await supabase
@@ -833,18 +1185,16 @@ export const api = {
       }
     }
 
-    // Check if email already exists (only when provided)
-    const trimmedEmail = email?.trim();
-    if (trimmedEmail) {
-      const { data: existingEmail } = await supabase
-        .from('users')
-        .select('user_id')
-        .eq('email', trimmedEmail)
-        .single();
+    // Check if email already exists
+    const trimmedEmail = email.trim().toLowerCase();
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('email', trimmedEmail)
+      .maybeSingle();
 
-      if (existingEmail) {
-        throw new Error('Email already exists');
-      }
+    if (existingEmail) {
+      throw new Error('Email already exists');
     }
 
     // Get role_id for the selected role (case-insensitive matching)
@@ -1014,6 +1364,181 @@ export const api = {
     };
   },
 
+  /**
+   * Initiates Google OAuth login flow
+   * Redirects user to Google OAuth consent screen
+   * After successful authentication, user will be redirected back to the app
+   */
+  async loginWithGoogle(): Promise<void> {
+    if (!supabaseAuth) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+    }
+    
+    try {
+      const { error } = await supabaseAuth.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) {
+        // Check for SSL/certificate errors
+        if (error.message?.includes('certificate') || error.message?.includes('SSL') || error.message?.includes('ERR_CERT')) {
+          throw new Error('SSL Certificate Error: Your browser cannot verify the connection to Supabase. This may be due to network security settings, a proxy, or antivirus software. Please check your network settings or contact your administrator.');
+        }
+        throw new Error(`Failed to initiate Google login: ${error.message}`);
+      }
+    } catch (err: any) {
+      // Catch network/SSL errors that might not be in the error object
+      if (err.message?.includes('certificate') || err.message?.includes('SSL') || err.message?.includes('ERR_CERT') || err.message?.includes('NET::ERR')) {
+        throw new Error('SSL Certificate Error: Your browser cannot verify the connection to Supabase. This may be due to network security settings, a proxy, or antivirus software. Please check your network settings or contact your administrator.');
+      }
+      throw err;
+    }
+  },
+
+  /**
+   * Handles Google OAuth callback and creates/updates user in database
+   * Extracts username from email (part before @)
+   * Creates user with Customer role by default if new user
+   * @returns User ID, role, and email
+   * @throws Error if authentication fails or user creation fails
+   */
+  async handleGoogleOAuthCallback(): Promise<{ userId: string; role: 'manager' | 'cashier' | 'barista' | 'customer'; email?: string }> {
+    if (!supabaseAuth) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+    }
+    
+    // Get the session from Supabase Auth
+    const { data: { session }, error: sessionError } = await supabaseAuth.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error('No active session found. Please try logging in again.');
+    }
+
+    const email = session.user.email;
+    if (!email) {
+      throw new Error('Email not found in Google account. Please ensure your Google account has an email address.');
+    }
+
+    // Extract username from email (part before @)
+    const username = email.split('@')[0];
+
+    // Get or create Customer role
+    let customerRoleId: number;
+    const { data: customerRole, error: roleError } = await supabase
+      .from('roles')
+      .select('role_id')
+      .eq('role_name', 'Customer')
+      .single();
+
+    if (roleError || !customerRole) {
+      // Try to find any role as fallback
+      const { data: anyRole, error: anyRoleError } = await supabase
+        .from('roles')
+        .select('role_id')
+        .limit(1)
+        .single();
+
+      if (anyRoleError || !anyRole) {
+        throw new Error('No roles found in database. Please contact administrator.');
+      }
+      customerRoleId = anyRole.role_id;
+    } else {
+      customerRoleId = customerRole.role_id;
+    }
+
+    // Check if user already exists by email
+    const { data: existingUser, error: userError } = await supabase
+      .from('users')
+      .select('user_id, role_id, email, roles(role_name)')
+      .eq('email', email)
+      .maybeSingle();
+
+    // Check for database errors when querying for existing user
+    if (userError) {
+      throw new Error(`Failed to check for existing user: ${userError.message}`);
+    }
+
+    let user;
+    if (existingUser) {
+      // User exists, update if needed
+      user = existingUser;
+    } else {
+      // Check if username already exists (case-insensitive)
+      const { data: allUsers, error: allUsersError } = await supabase
+        .from('users')
+        .select('username');
+
+      // Check for database errors when querying for all users
+      if (allUsersError) {
+        throw new Error(`Failed to check username availability: ${allUsersError.message}`);
+      }
+
+      let finalUsername = username;
+      if (allUsers && allUsers.length > 0) {
+        const usernameLower = username.toLowerCase();
+        const usernameExists = allUsers.some((u) => u.username.toLowerCase() === usernameLower);
+        
+        // If username exists, append a number
+        if (usernameExists) {
+          let counter = 1;
+          let newUsername = `${username}${counter}`;
+          while (allUsers.some((u) => u.username.toLowerCase() === newUsername.toLowerCase())) {
+            counter++;
+            newUsername = `${username}${counter}`;
+          }
+          finalUsername = newUsername;
+        }
+      }
+
+      // Create new user
+      // For OAuth users, set password_hash to empty string since they authenticate via OAuth
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert({
+          username: finalUsername,
+          email: email,
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || finalUsername,
+          role_id: customerRoleId,
+          password_hash: '', // OAuth users don't need a password hash
+        } as any) // Type assertion needed because password_hash is not in TypeScript types but exists in database
+        .select('user_id, role_id, email, roles(role_name)')
+        .maybeSingle();
+
+      if (createError || !newUser) {
+        throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
+      }
+
+      user = newUser;
+    }
+
+    // Map role_name to lowercase role
+    const roleName = (user.roles as any)?.role_name?.toLowerCase() || '';
+    let role: 'manager' | 'cashier' | 'barista' | 'customer' = 'customer';
+    
+    if (roleName.includes('manager')) {
+      role = 'manager';
+    } else if (roleName.includes('cashier')) {
+      role = 'cashier';
+    } else if (roleName.includes('barista')) {
+      role = 'barista';
+    } else if (roleName.includes('customer')) {
+      role = 'customer';
+    }
+
+    return {
+      userId: user.user_id.toString(),
+      role,
+      email: user.email || undefined,
+    };
+  },
+
   async getAllRoles(): Promise<Array<{ roleId: number; roleName: string }>> {
     const { data: roles, error } = await supabase
       .from('roles')
@@ -1082,6 +1607,7 @@ export const api = {
       price: parseFloat(item.default_price.toString()),
       description: item.description || '',
       active: item.active,
+      temperatureOptions: parseTemperatureOptions(item),
     }));
   },
 
@@ -1164,6 +1690,7 @@ export const api = {
       price: parseFloat(data.default_price.toString()),
       description: data.description || '',
       active: data.active,
+      temperatureOptions: parseTemperatureOptions(data),
     };
   },
 
@@ -1437,5 +1964,490 @@ export const api = {
       .sort((a, b) => b.sales - a.sales);
 
     return { dailySales, topItems, categorySales };
+  },
+
+  /**
+   * Generates X/Z/custom report summaries with tender breakdowns.
+   * Falls back gracefully if optional columns (discounts, tax, payment_method) are missing.
+   */
+  async getReportSummary(options?: { type?: '24h' | '7d' | '30d' | 'custom'; from?: string; to?: string }): Promise<ReportSummary> {
+    const range = buildReportRange(options?.type, options?.from, options?.to);
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_id, order_time, total, discounts, tax, status, payment_method, subtotal')
+      .in('status', ['COMPLETED', 'Completed', 'READY', 'PLACED', 'PREPARING'])
+      .gte('order_time', range.start)
+      .lte('order_time', range.end);
+
+    if (error) {
+      throw new Error(`Failed to fetch report summary: ${error.message}`);
+    }
+
+    const orders = data || [];
+    let grossSales = 0;
+    let netSales = 0;
+    let tax = 0;
+    let discounts = 0;
+    let refunds = 0;
+    let tips = 0; // tips are not currently stored; reserved for future schema
+    const tenders: Record<string, number> = {};
+
+    orders.forEach((order: any) => {
+      const total = parseFloat((order.total ?? 0).toString());
+      const orderDiscount = parseFloat((order.discounts ?? 0).toString());
+      const orderTax = parseFloat((order.tax ?? 0).toString());
+      const status = (order.status || '').toUpperCase();
+      const tender = (order.payment_method || 'unknown').toString();
+
+      // Gross approximates pre-discount total when subtotal unavailable
+      const subtotal = order.subtotal !== undefined ? parseFloat(order.subtotal.toString()) : total + orderDiscount - orderTax;
+      grossSales += subtotal + orderTax;
+      discounts += isNaN(orderDiscount) ? 0 : orderDiscount;
+      tax += isNaN(orderTax) ? 0 : orderTax;
+
+      // Refunds/voids if status indicates
+      if (status === 'REFUNDED' || status === 'VOIDED') {
+        refunds += total;
+      } else {
+        netSales += total;
+      }
+
+      tenders[tender] = (tenders[tender] || 0) + total;
+    });
+
+    const cashTotal = tenders['cash'] || tenders['Cash'] || 0;
+
+    return {
+      grossSales,
+      netSales,
+      tax,
+      discounts,
+      refunds,
+      orderCount: orders.length,
+      tenders,
+      tips,
+      expectedCash: cashTotal,
+      range,
+    };
+  },
+
+  /**
+   * Fetch recent orders with lightweight fields for drill-down tables.
+   */
+  async getRecentOrders(limit: number = 20): Promise<OrderSummary[]> {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_id, order_time, total, payment_method, status')
+      .order('order_time', { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(`Failed to fetch recent orders: ${error.message}`);
+
+    return (data || []).map((order: any) => ({
+      orderId: (order.order_id || order.id).toString(),
+      createdAt: order.order_time,
+      total: parseFloat((order.total ?? 0).toString()),
+      paymentMethod: order.payment_method || 'unknown',
+      status: order.status,
+    }));
+  },
+
+  /**
+   * Fetch paginated order history for managers with optional date filters.
+   */
+  async getOrdersHistory(params?: {
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ orders: OrderSummary[]; total: number }> {
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 50;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from('orders')
+      .select('order_id, order_time, total, payment_method, status', { count: 'exact' })
+      .order('order_time', { ascending: false });
+
+    if (params?.startDate) {
+      query = query.gte('order_time', params.startDate);
+    }
+    if (params?.endDate) {
+      query = query.lte('order_time', params.endDate);
+    }
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) throw new Error(`Failed to fetch orders history: ${error.message}`);
+
+    return {
+      total: count || 0,
+      orders: (data || []).map((order: any) => ({
+        orderId: (order.order_id || order.id).toString(),
+        createdAt: order.order_time,
+        total: parseFloat((order.total ?? 0).toString()),
+        paymentMethod: order.payment_method || 'unknown',
+        status: order.status,
+      })),
+    };
+  },
+
+  /**
+   * Weekly rollup for visualizations (default last 8 weeks).
+   */
+  async getWeeklySalesRollup(weeks: number = 8): Promise<Array<{ weekStart: string; total: number }>> {
+    const start = new Date();
+    start.setDate(start.getDate() - weeks * 7);
+    const startStr = start.toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_time, total')
+      .eq('status', 'COMPLETED')
+      .gte('order_time', startStr)
+      .order('order_time', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch weekly sales: ${error.message}`);
+
+    const weekly = new Map<string, number>();
+
+    (data || []).forEach((order: any) => {
+      const date = new Date(order.order_time);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay()); // Sunday start
+      const key = weekStart.toISOString().split('T')[0];
+      weekly.set(key, (weekly.get(key) || 0) + parseFloat((order.total ?? 0).toString()));
+    });
+
+    return Array.from(weekly.entries())
+      .map(([weekStart, total]) => ({ weekStart, total }))
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  },
+
+  /**
+   * Monthly rollup for visualizations (default last 6 months).
+   */
+  async getMonthlySalesRollup(months: number = 6): Promise<Array<{ month: string; total: number }>> {
+    const start = new Date();
+    start.setMonth(start.getMonth() - months);
+    const startStr = start.toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_time, total')
+      .eq('status', 'COMPLETED')
+      .gte('order_time', startStr)
+      .order('order_time', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch monthly sales: ${error.message}`);
+
+    const monthly = new Map<string, number>();
+
+    (data || []).forEach((order: any) => {
+      const date = new Date(order.order_time);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthly.set(key, (monthly.get(key) || 0) + parseFloat((order.total ?? 0).toString()));
+    });
+
+    return Array.from(monthly.entries())
+      .map(([month, total]) => ({ month, total }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+  },
+
+  /**
+   * Comprehensive analytics for manager reports and visualizations over a range.
+   */
+  async getOrdersAnalytics(options?: { type?: '24h' | '7d' | '30d' | 'custom'; from?: string; to?: string }): Promise<OrdersAnalytics> {
+    const range = buildReportRange(options?.type, options?.from, options?.to);
+    // Include both PAID and COMPLETED as they represent completed sales
+    // Exclude VOID and REFUNDED as they don't represent actual sales
+    const statuses = ['COMPLETED', 'PAID'];
+
+    // First, get the total count of orders (fast count query)
+    const { count: totalOrderCount, error: countError } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', statuses)
+      .gte('order_time', range.start)
+      .lte('order_time', range.end);
+
+    if (countError) {
+      console.warn('Failed to get order count:', countError);
+    }
+
+    // Fetch orders WITHOUT order_items for much better performance
+    // We'll fetch order_items separately only if needed for top items
+    let allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data: pageData, error: pageError } = await supabase
+        .from('orders')
+        .select('order_id, order_time, total, payment_method, status')
+        .in('status', statuses)
+        .gte('order_time', range.start)
+        .lte('order_time', range.end)
+        .order('order_time', { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (pageError) {
+        throw new Error(`Failed to fetch orders: ${pageError.message}`);
+      }
+
+      if (pageData && pageData.length > 0) {
+        allData = allData.concat(pageData);
+        from += pageSize;
+        hasMore = pageData.length === pageSize;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const orders = allData;
+    
+    // Fetch top items separately using a more efficient query
+    // This is much faster than joining order_items for every order
+    const { data: topItemsData, error: topItemsError } = await supabase
+      .from('order_items')
+      .select(`
+        quantity,
+        unit_price,
+        menu_items!inner(name)
+      `)
+      .in('order_id', orders.map(o => o.order_id))
+      .limit(10000); // Reasonable limit for top items calculation
+
+    // Build a map of order_id to order_items for faster lookup
+    const orderItemsMap = new Map<number, any[]>();
+    if (topItemsData && !topItemsError) {
+      // Group order_items by order_id
+      const orderItemsByOrder = new Map<number, any[]>();
+      topItemsData.forEach((item: any) => {
+        // We need to get the order_id from the join, but Supabase might not return it
+        // So we'll fetch it differently
+      });
+    }
+
+    // Alternative: Fetch top items using a direct SQL-like approach via RPC or separate query
+    // For now, we'll calculate top items from a sample or skip if too many orders
+    const shouldFetchTopItems = orders.length < 5000; // Only fetch if reasonable number of orders
+    
+    let topItemsMap = new Map<string, TopItemMetric>();
+    if (shouldFetchTopItems) {
+      // Fetch order_items for top items calculation (only if not too many orders)
+      const orderIds = orders.map(o => o.order_id);
+      const chunks = [];
+      for (let i = 0; i < orderIds.length; i += 1000) {
+        chunks.push(orderIds.slice(i, i + 1000));
+      }
+
+      for (const chunk of chunks) {
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('order_items')
+          .select(`
+            order_id,
+            quantity,
+            unit_price,
+            menu_items!inner(name)
+          `)
+          .in('order_id', chunk);
+
+        if (itemsData && !itemsError) {
+          itemsData.forEach((oi: any) => {
+            const name = oi.menu_items?.name || 'Unknown item';
+            const quantity = oi.quantity || 0;
+            const revenue = parseFloat((oi.unit_price || 0).toString()) * quantity;
+            const existing = topItemsMap.get(name) || { name, quantity: 0, revenue: 0, orderCount: 0 };
+            topItemsMap.set(name, {
+              name,
+              quantity: existing.quantity + quantity,
+              revenue: existing.revenue + revenue,
+              orderCount: existing.orderCount + 1,
+            });
+          });
+        }
+      }
+    }
+    const getOrderTime = (order: any) =>
+      order.order_time || order.orderTime;
+
+    // Debug: Track unique date keys to verify date extraction
+    const dateKeySet = new Set<string>();
+    const sampleOrders: any[] = [];
+
+    const dailyMap = new Map<string, { total: number; orders: number }>();
+    const hourlyMap = new Map<number, { total: number; orders: number }>();
+    const dowMap = new Map<number, { total: number; orders: number }>();
+    const paymentMap: PaymentBreakdown = {};
+    const zDayMap = new Map<string, { payments: PaymentBreakdown; hourly: Map<number, { total: number; orders: number }>; total: number; orders: number }>();
+
+    const orderHistory: OrderSummary[] = [];
+
+    orders.forEach((order: any) => {
+      const orderTimeStr = getOrderTime(order);
+      if (!orderTimeStr) return;
+      
+      // Extract date key directly from the string to avoid timezone conversion issues
+      // Supabase returns timestamptz in ISO format (e.g., "2025-11-07T07:00:29.396293Z" or "2025-11-07 07:00:29+00")
+      let dateKey: string;
+      const orderTime = new Date(orderTimeStr);
+      
+      if (typeof orderTimeStr === 'string') {
+        // Try to extract date from various formats
+        // Format 1: ISO with T (2025-11-07T07:00:29Z or 2025-11-07T07:00:29.396293Z)
+        if (orderTimeStr.includes('T')) {
+          dateKey = orderTimeStr.split('T')[0];
+        }
+        // Format 2: PostgreSQL format (2025-11-07 07:00:29+00 or 2025-11-07 07:00:29.396293+00)
+        else if (orderTimeStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          dateKey = orderTimeStr.substring(0, 10);
+        }
+        // Format 3: Fallback to parsing as Date and using UTC
+        else {
+          const year = orderTime.getUTCFullYear();
+          const month = String(orderTime.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(orderTime.getUTCDate()).padStart(2, '0');
+          dateKey = `${year}-${month}-${day}`;
+        }
+      } else {
+        // If not a string, convert to Date and extract UTC date
+        const year = orderTime.getUTCFullYear();
+        const month = String(orderTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(orderTime.getUTCDate()).padStart(2, '0');
+        dateKey = `${year}-${month}-${day}`;
+      }
+      // Use UTC methods to get hour and day of week consistently
+      const hour = orderTime.getUTCHours();
+      const dow = orderTime.getUTCDay();
+      const total = parseFloat((order.total ?? 0).toString());
+      const payment = (order.payment_method || 'unknown').toString();
+
+      // Order history
+      orderHistory.push({
+        orderId: (order.order_id || order.id).toString(),
+        createdAt: orderTimeStr,
+        total,
+        paymentMethod: payment,
+        status: order.status,
+      });
+
+      // Track sample orders for debugging (first 5 orders)
+      if (sampleOrders.length < 5) {
+        sampleOrders.push({ orderTimeStr, dateKey, orderId: order.order_id });
+      }
+      dateKeySet.add(dateKey);
+
+      // Daily
+      const daily = dailyMap.get(dateKey) || { total: 0, orders: 0 };
+      dailyMap.set(dateKey, { total: daily.total + total, orders: daily.orders + 1 });
+
+      // Hourly (overall)
+      const hourly = hourlyMap.get(hour) || { total: 0, orders: 0 };
+      hourlyMap.set(hour, { total: hourly.total + total, orders: hourly.orders + 1 });
+
+      // Day of week
+      const dowEntry = dowMap.get(dow) || { total: 0, orders: 0 };
+      dowMap.set(dow, { total: dowEntry.total + total, orders: dowEntry.orders + 1 });
+
+      // Payment
+      const payEntry = paymentMap[payment] || { amount: 0, count: 0 };
+      paymentMap[payment] = { amount: payEntry.amount + total, count: payEntry.count + 1 };
+
+      // Z report day structures
+      const zDay = zDayMap.get(dateKey) || {
+        payments: {},
+        hourly: new Map<number, { total: number; orders: number }>(),
+        total: 0,
+        orders: 0,
+      };
+      const zPay = zDay.payments[payment] || { amount: 0, count: 0 };
+      zDay.payments[payment] = { amount: zPay.amount + total, count: zPay.count + 1 };
+      const zHour = zDay.hourly.get(hour) || { total: 0, orders: 0 };
+      zDay.hourly.set(hour, { total: zHour.total + total, orders: zHour.orders + 1 });
+      zDay.total += total;
+      zDay.orders += 1;
+      zDayMap.set(dateKey, zDay);
+    });
+
+    // Debug log removed for production
+
+    const daily: DailyMetric[] = Array.from(dailyMap.entries())
+      .map(([date, v]) => ({
+        date,
+        total: v.total,
+        orders: v.orders,
+        avgOrderValue: v.orders ? v.total / v.orders : 0,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const hourly: HourlyMetric[] = Array.from(hourlyMap.entries())
+      .map(([hour, v]) => ({ hour, total: v.total, orders: v.orders }))
+      .sort((a, b) => a.hour - b.hour);
+
+    const dayOfWeek = Array.from(dowMap.entries())
+      .map(([dow, v]) => ({ dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow], total: v.total, orders: v.orders }))
+      .sort((a, b) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(a.dow) - ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(b.dow));
+
+    const topItems: TopItemMetric[] = Array.from(topItemsMap.values()).sort((a, b) => b.revenue - a.revenue);
+
+    const xReport = {
+      total: daily.reduce((sum, d) => sum + d.total, 0),
+      orders: daily.reduce((sum, d) => sum + d.orders, 0),
+      avgOrderValue: daily.reduce((sum, d) => sum + d.total, 0) / (daily.reduce((sum, d) => sum + d.orders, 0) || 1),
+      payments: paymentMap,
+      hourly,
+    };
+
+    const zPerDay: ZReportDay[] = Array.from(zDayMap.entries())
+      .map(([date, day]) => ({
+        date,
+        total: day.total,
+        orders: day.orders,
+        avgOrderValue: day.orders ? day.total / day.orders : 0,
+        payments: day.payments,
+        hourly: Array.from(day.hourly.entries())
+          .map(([hour, v]) => ({ hour, total: v.total, orders: v.orders }))
+          .sort((a, b) => a.hour - b.hour),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const zAggregatePayments: PaymentBreakdown = {};
+    zPerDay.forEach((day) => {
+      Object.entries(day.payments).forEach(([method, val]) => {
+        const existing = zAggregatePayments[method] || { amount: 0, count: 0 };
+        zAggregatePayments[method] = { amount: existing.amount + val.amount, count: existing.count + val.count };
+      });
+    });
+
+    const totalOrders = zPerDay.reduce((sum, d) => sum + d.orders, 0);
+    const totalSales = zPerDay.reduce((sum, d) => sum + d.total, 0);
+
+    const zReport = {
+      perDay: zPerDay,
+      aggregate: {
+        total: totalSales,
+        orders: totalOrders,
+        avgOrderValue: totalOrders ? totalSales / totalOrders : 0,
+        payments: zAggregatePayments,
+      },
+    };
+
+    return {
+      range,
+      orderHistory,
+      daily,
+      hourly,
+      dayOfWeek,
+      paymentBreakdown: paymentMap,
+      topItems,
+      totalOrderCount: totalOrderCount || orders.length, // Use actual count from database
+      xReport,
+      zReport,
+    };
   },
 };

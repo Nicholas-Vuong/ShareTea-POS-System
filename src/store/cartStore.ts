@@ -4,9 +4,10 @@
  * Handles item addition, removal, quantity updates, and total calculations
  * 
  * Items are matched by menuItemId AND options (same item with different customizations are separate)
- * Uses Zustand for state management
+ * Uses Zustand for state management with localStorage persistence
  */
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 /**
  * Customization options for a cart item
@@ -15,6 +16,7 @@ export interface CartItemOptions {
   size: 'Small' | 'Medium' | 'Large';
   sugar: number;
   ice: 'No Ice' | 'Less Ice' | 'Normal' | 'Extra Ice';
+  temperature?: 'Hot' | 'Cold';
   toppings: string[];
 }
 
@@ -47,12 +49,48 @@ interface CartState {
 }
 
 /**
+ * Cart storage configuration
+ * Uses localStorage with expiration logic (24 hours)
+ */
+interface StoredCartState {
+  items: CartItem[];
+  timestamp: number;
+}
+
+const CART_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CART_TIMESTAMP_KEY = 'sharetea-cart-timestamp';
+
+const storage =
+  typeof window !== 'undefined'
+    ? createJSONStorage<CartState>(() => window.localStorage)
+    : undefined;
+
+/**
+ * Check and clear expired cart on app initialization
+ */
+if (typeof window !== 'undefined' && storage) {
+  const timestampStr = window.localStorage.getItem(CART_TIMESTAMP_KEY);
+  if (timestampStr) {
+    const timestamp = parseInt(timestampStr, 10);
+    const now = Date.now();
+    if (now - timestamp > CART_EXPIRATION_MS) {
+      // Cart expired, clear it
+      window.localStorage.removeItem('sharetea-cart');
+      window.localStorage.removeItem(CART_TIMESTAMP_KEY);
+    }
+  }
+}
+
+/**
  * Cart store implementation
  * Items are matched by both menuItemId and options JSON string
  * This means the same item with different customizations are treated as separate items
+ * Includes localStorage persistence with expiration
  */
-export const useCartStore = create<CartState>((set, get) => ({
-  items: [],
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      items: [],
   /**
    * Adds an item to the cart
    * If an identical item (same ID and options) exists, increases its quantity
@@ -149,4 +187,22 @@ export const useCartStore = create<CartState>((set, get) => ({
     const state = get();
     return state.items.reduce((sum, item) => sum + item.subtotal, 0);
   },
-}));
+    }),
+    {
+      name: 'sharetea-cart',
+      storage,
+      // Only persist items
+      partialize: (state) => ({ items: state.items }),
+      // Update timestamp on rehydration
+      onRehydrateStorage: () => (state) => {
+        if (state && typeof window !== 'undefined') {
+          // Update timestamp when cart is loaded
+          window.localStorage.setItem(CART_TIMESTAMP_KEY, Date.now().toString());
+        }
+      },
+    }
+  )
+);
+
+// Note: Cart expiration is checked on app load (24 hours from last load)
+// The timestamp is updated when cart is rehydrated from storage

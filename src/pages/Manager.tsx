@@ -1,5 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
-import { MenuItem, LowStockItem, InventoryItem, Employee, SalesReport, SalesData, api } from '@/lib/api';
+import {
+  MenuItem,
+  LowStockItem,
+  InventoryItem,
+  Employee,
+  ReportSummary,
+  OrderSummary,
+  OrdersAnalytics,
+  api,
+} from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -41,8 +50,23 @@ export default function Manager() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [salesReports, setSalesReports] = useState<SalesReport[]>([]);
-  const [salesData, setSalesData] = useState<SalesData | null>(null);
+  const [analytics, setAnalytics] = useState<OrdersAnalytics | null>(null);
+  const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
+  // Default manager reports to a 30-day custom window so past orders always show
+  const defaultReportFrom = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  })();
+  const defaultReportTo = new Date().toISOString().split('T')[0];
+  const [reportType, setReportType] = useState<'24h' | '7d' | '30d' | 'custom'>('7d');
+  const [reportFrom, setReportFrom] = useState(defaultReportFrom);
+  const [reportTo, setReportTo] = useState(defaultReportTo);
+  const [reportSubTab, setReportSubTab] = useState<'summary' | 'orders' | 'top' | 'x' | 'z' | 'restock'>('summary');
+  const [restockItems, setRestockItems] = useState<
+    Array<{ name: string; onHand: number; reorderPoint: number; needed: number; costPerUnit: number; reorderCost: number }>
+  >([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(false);
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editingInventory, setEditingInventory] = useState<string | null>(null);
@@ -54,6 +78,200 @@ export default function Manager() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const formatDateTime = (value?: string) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
+
+  const buildRangeParams = () => {
+    if (reportType === 'custom') {
+      const from = reportFrom || defaultReportFrom;
+      const to = reportTo || defaultReportTo;
+      return { type: 'custom' as const, from, to };
+    }
+    return { type: reportType };
+  };
+
+  type ChartPoint = { label: string; value: number; helper?: string };
+
+  const LineChart = ({ data, height = 280 }: { data: ChartPoint[]; height?: number }) => {
+    if (!data.length) return <p className="text-sm text-muted-foreground">No data</p>;
+
+    const max = Math.max(...data.map((d) => d.value), 1);
+    const longestLabel = Math.max(...data.map((d) => d.label.length), 1);
+    const slotWidth = Math.max(80, Math.min(160, longestLabel * 7));
+    const width = Math.max(520, data.length * slotWidth + 120);
+
+    const points = data.map((d, i) => {
+      const x = 60 + i * slotWidth;
+      const y = height - 60 - (d.value / max) * (height - 120);
+      return { ...d, x, y };
+    });
+
+    const path = points.map((p) => `${p.x},${p.y}`).join(' ');
+
+    return (
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" style={{ width: '100%', minHeight: height }}>
+          <line x1={60} y1={height - 60} x2={width - 20} y2={height - 60} stroke="#e5e7eb" />
+          <line x1={60} y1={30} x2={60} y2={height - 60} stroke="#e5e7eb" />
+          <polyline fill="none" stroke="#6366f1" strokeWidth={3} points={path} />
+          {points.map((p) => (
+            <g key={p.label}>
+              <circle cx={p.x} cy={p.y} r={5} fill="#6366f1" />
+              <text
+                x={p.x}
+                y={height - 24}
+                textAnchor="end"
+                fontSize="11"
+                fill="#6b7280"
+                transform={`rotate(-25, ${p.x}, ${height - 24})`}
+              >
+                {p.label}
+              </text>
+              <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize="11" fill="#111827">
+                ${p.value.toFixed(2)}
+              </text>
+              {p.helper && (
+                <text x={p.x} y={p.y + 18} textAnchor="middle" fontSize="10" fill="#4b5563">
+                  {p.helper}
+                </text>
+              )}
+            </g>
+          ))}
+        </svg>
+      </div>
+    );
+  };
+
+  const BarChart = ({ data, height = 300 }: { data: ChartPoint[]; height?: number }) => {
+    if (!data.length) return <p className="text-sm text-muted-foreground">No data</p>;
+
+    const max = Math.max(...data.map((d) => d.value), 1);
+    const longestLabel = Math.max(...data.map((d) => d.label.length), 1);
+    // Allow more room for long labels to avoid truncation/overlap
+    const slotWidth = Math.max(100, Math.min(220, longestLabel * 9));
+    const barWidth = Math.min(72, slotWidth - 30);
+    const gap = slotWidth - barWidth;
+    const width = Math.max(560, data.length * (barWidth + gap) + 120);
+
+    return (
+      <div className="overflow-x-auto pb-1">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" style={{ width: '100%', minHeight: height }}>
+          <line x1={60} y1={height - 60} x2={width - 20} y2={height - 60} stroke="#e5e7eb" />
+          <line x1={60} y1={30} x2={60} y2={height - 60} stroke="#e5e7eb" />
+          {data.map((d, i) => {
+            const x = 60 + i * (barWidth + gap);
+            const barHeight = Math.max(12, (d.value / max) * (height - 140));
+            const y = height - 60 - barHeight;
+            return (
+              <g key={d.label}>
+                <rect x={x} y={y} width={barWidth} height={barHeight} fill="#6366f1" rx={10} />
+                <text x={x + barWidth / 2} y={y - 12} textAnchor="middle" fontSize="11" fill="#111827">
+                  ${d.value.toFixed(2)}
+                </text>
+                {d.helper && (
+                  <text x={x + barWidth / 2} y={y + 16} textAnchor="middle" fontSize="10" fill="#4b5563">
+                    {d.helper}
+                  </text>
+                )}
+                <text
+                  x={x + barWidth / 2}
+                  y={height - 24}
+                  textAnchor="end"
+                  fontSize="11"
+                  fill="#6b7280"
+                  transform={`rotate(-20, ${x + barWidth / 2}, ${height - 24})`}
+                >
+                  {d.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  };
+
+  const RangeControls = ({ onRefresh }: { onRefresh?: () => void }) => {
+    const currentLabel = analytics?.range?.label || reportSummary?.range?.label;
+    const isCustom = reportType === 'custom';
+
+    return (
+      <div className="w-full rounded-lg border bg-muted/40 p-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col min-w-[180px]">
+            <Label className="text-xs font-semibold text-muted-foreground">Preset</Label>
+            <Select
+              value={reportType}
+              onValueChange={(val) => {
+                const next = val as '24h' | '7d' | '30d' | 'custom';
+                setReportType(next);
+                if (next === 'custom') {
+                  setReportFrom(defaultReportFrom);
+                  setReportTo(defaultReportTo);
+                } else {
+                  setReportFrom('');
+                  setReportTo('');
+                }
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Choose range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24h">Last 24 hours</SelectItem>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="custom">Custom range</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col min-w-[150px]">
+              <Label htmlFor="range-from">From</Label>
+              <Input
+                id="range-from"
+                type="date"
+                value={reportFrom}
+                disabled={!isCustom}
+                onChange={(e) => setReportFrom(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col min-w-[150px]">
+              <Label htmlFor="range-to">To</Label>
+              <Input
+                id="range-to"
+                type="date"
+                value={reportTo}
+                disabled={!isCustom}
+                onChange={(e) => setReportTo(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {onRefresh && (
+            <Button variant="outline" onClick={onRefresh} disabled={isLoadingReports}>
+              Refresh
+            </Button>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {currentLabel ? `Showing: ${currentLabel}` : 'Choose a range to update charts.'}
+        </div>
+      </div>
+    );
+  };
+
   // Load data based on active tab
   useEffect(() => {
     if (activeTab === 'menu') {
@@ -64,11 +282,24 @@ export default function Manager() {
     } else if (activeTab === 'employees') {
       loadEmployees();
     } else if (activeTab === 'reports') {
-      loadSalesReports();
+      loadAnalytics();
+      loadReportSummary();
+      loadRestock();
     } else if (activeTab === 'visualization') {
-      loadSalesData();
+      loadAnalytics();
     }
   }, [activeTab]);
+
+  // Reload report summary when type/date changes
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      loadReportSummary();
+      loadAnalytics();
+    }
+    if (activeTab === 'visualization') {
+      loadAnalytics();
+    }
+  }, [reportType, reportFrom, reportTo, activeTab]);
 
   const loadMenu = async () => {
     try {
@@ -118,16 +349,61 @@ export default function Manager() {
     }
   };
 
-  const loadSalesReports = async () => {
+  const loadReportSummary = async () => {
     try {
-      const data = await api.getSalesReports();
-      setSalesReports(data);
+      setIsLoadingReports(true);
+      const rangeParams = buildRangeParams();
+      const summary = await api.getReportSummary(rangeParams);
+      setReportSummary(summary);
     } catch (error: any) {
       toast({
         title: 'Error',
         description: error.message,
         variant: 'destructive',
       });
+    } finally {
+      setIsLoadingReports(false);
+    }
+  };
+
+  const loadAnalytics = async () => {
+    try {
+      setIsLoadingReports(true);
+      const rangeParams = buildRangeParams();
+      const data = await api.getOrdersAnalytics(rangeParams);
+      setAnalytics(data);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingReports(false);
+    }
+  };
+
+
+  const loadRestock = async () => {
+    try {
+      const inventoryItems = await api.getAllInventoryItems();
+      const restock = inventoryItems
+        .filter((item) => item.onHandQuantity <= item.reorderPoint)
+        .map((item) => {
+          const needed = Math.max(item.reorderPoint - item.onHandQuantity, 0);
+          const reorderCost = needed * (item.costPerUnit || 0);
+          return {
+            name: item.name,
+            onHand: item.onHandQuantity,
+            reorderPoint: item.reorderPoint,
+            needed,
+            costPerUnit: item.costPerUnit,
+            reorderCost,
+          };
+        });
+      setRestockItems(restock);
+    } catch (error: any) {
+      console.error(error);
     }
   };
 
@@ -641,118 +917,382 @@ export default function Manager() {
 
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
-            <Card className="p-6">
-              <h2 className="text-2xl font-bold mb-4">Sales Reports</h2>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Order Count</TableHead>
-                    <TableHead>Average Order Value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {salesReports.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No sales data available
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    salesReports.map((report) => (
-                      <TableRow key={report.date}>
-                        <TableCell className="font-medium">{new Date(report.date).toLocaleDateString()}</TableCell>
-                        <TableCell>${report.totalSales.toFixed(2)}</TableCell>
-                        <TableCell>{report.orderCount}</TableCell>
-                        <TableCell>${report.averageOrderValue.toFixed(2)}</TableCell>
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-2xl font-bold">Reports</h2>
+                <p className="text-sm text-muted-foreground">Select timeframe to refresh all report data.</p>
+              </div>
+
+              <RangeControls onRefresh={() => { loadReportSummary(); loadAnalytics(); }} />
+
+              <Tabs value={reportSubTab} onValueChange={(v) => setReportSubTab(v as any)} className="mt-6">
+                <TabsList className="flex flex-wrap">
+                  <TabsTrigger value="summary">Summary</TabsTrigger>
+                  <TabsTrigger value="orders">Order History</TabsTrigger>
+                  <TabsTrigger value="top">Top Items</TabsTrigger>
+                  <TabsTrigger value="x">X-Report</TabsTrigger>
+                  <TabsTrigger value="z">Z-Report</TabsTrigger>
+                  <TabsTrigger value="restock">Restock</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="summary" className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground">Gross Sales</p>
+                      <p className="text-2xl font-bold">
+                        ${reportSummary ? reportSummary.grossSales.toFixed(2) : '0.00'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground">Net Sales</p>
+                      <p className="text-2xl font-bold">
+                        ${reportSummary ? reportSummary.netSales.toFixed(2) : '0.00'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground">Tax Collected</p>
+                      <p className="text-2xl font-bold">
+                        ${reportSummary ? reportSummary.tax.toFixed(2) : '0.00'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground">Order Count</p>
+                      <p className="text-2xl font-bold">{reportSummary?.orderCount ?? 0}</p>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Card className="p-4">
+                      <p className="text-sm text-muted-foreground">Discounts</p>
+                      <p className="text-2xl font-bold">
+                        ${reportSummary ? reportSummary.discounts.toFixed(2) : '0.00'}
+                      </p>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Recent Orders (5 most recent)</h3>
+                      <Button size="sm" variant="secondary" onClick={() => setReportSubTab('orders')}>
+                        View all
+                      </Button>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Order</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Tender</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {analytics?.orderHistory?.length ? (
+                          analytics.orderHistory
+                            .slice(-5)
+                            .reverse()
+                            .map((order) => (
+                              <TableRow key={order.orderId}>
+                                <TableCell className="font-medium">{order.orderId}</TableCell>
+                                <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                                <TableCell>${order.total.toFixed(2)}</TableCell>
+                                <TableCell className="capitalize">{order.paymentMethod || 'unknown'}</TableCell>
+                              </TableRow>
+                            ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                              No recent orders
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="orders" className="space-y-4">
+                  <h3 className="text-lg font-semibold">Order History (range)</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Tender</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {analytics?.orderHistory?.length ? (
+                        [...analytics.orderHistory]
+                          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                          .map((order) => (
+                            <TableRow key={order.orderId}>
+                              <TableCell className="font-medium">{order.orderId}</TableCell>
+                              <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                              <TableCell>${order.total.toFixed(2)}</TableCell>
+                              <TableCell className="capitalize">{order.paymentMethod || 'unknown'}</TableCell>
+                              <TableCell>{order.status || '—'}</TableCell>
+                            </TableRow>
+                          ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground">
+                            No orders
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+
+                <TabsContent value="top" className="space-y-4">
+                  <h3 className="text-lg font-semibold">Top Selling Items (range)</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Qty Sold</TableHead>
+                        <TableHead>Revenue</TableHead>
+                        <TableHead>Order Count</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {analytics?.topItems?.length ? (
+                        analytics.topItems.map((item) => (
+                          <TableRow key={item.name}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.quantity}</TableCell>
+                            <TableCell>${item.revenue.toFixed(2)}</TableCell>
+                            <TableCell>{item.orderCount}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            No item data
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+
+                <TabsContent value="x" className="space-y-4">
+                  <h3 className="text-lg font-semibold">X-Report (snapshot)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Total Sales</p><p className="text-2xl font-bold">${analytics?.xReport.total.toFixed(2) ?? '0.00'}</p></Card>
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Orders</p><p className="text-2xl font-bold">{analytics?.xReport.orders ?? 0}</p></Card>
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Avg Order</p><p className="text-2xl font-bold">${analytics?.xReport.avgOrderValue.toFixed(2) ?? '0.00'}</p></Card>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">Payment Breakdown</h4>
+                    {analytics?.xReport.payments && Object.keys(analytics.xReport.payments).length ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {Object.entries(analytics.xReport.payments).map(([method, val]) => (
+                          <Card key={method} className="p-3">
+                            <div className="flex justify-between">
+                              <span className="capitalize">{method}</span>
+                              <span className="font-semibold">${val.amount.toFixed(2)}</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{val.count} orders</p>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No payment data</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">Hourly Orders/Sales</h4>
+                    <div className="space-y-2">
+                      {analytics?.xReport.hourly?.length ? (
+                        analytics.xReport.hourly.map((h) => (
+                          <div key={h.hour} className="flex items-center gap-3">
+                            <div className="w-16 text-sm text-muted-foreground">{h.hour}:00</div>
+                            <div className="flex-1 bg-muted rounded-full h-4 relative">
+                              <div
+                                className="bg-primary h-4 rounded-full"
+                                style={{ width: `${(h.total / Math.max(...analytics.xReport.hourly.map((x) => x.total || 1))) * 100}%` }}
+                              />
+                            </div>
+                            <div className="w-24 text-right text-sm">${h.total.toFixed(2)} / {h.orders} orders</div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No hourly data</p>
+                      )}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="z" className="space-y-4">
+                  <h3 className="text-lg font-semibold">Z-Report (per day)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Total Sales</p><p className="text-2xl font-bold">${analytics?.zReport.aggregate.total.toFixed(2) ?? '0.00'}</p></Card>
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Orders</p><p className="text-2xl font-bold">{analytics?.zReport.aggregate.orders ?? 0}</p></Card>
+                    <Card className="p-4"><p className="text-sm text-muted-foreground">Avg Order</p><p className="text-2xl font-bold">${analytics?.zReport.aggregate.avgOrderValue.toFixed(2) ?? '0.00'}</p></Card>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">Per-Day Breakdown</h4>
+                    <div className="space-y-3">
+                      {analytics?.zReport.perDay?.length ? (
+                        analytics.zReport.perDay.map((day) => (
+                          <Card key={day.date} className="p-4 space-y-2">
+                            <div className="flex flex-wrap justify-between">
+                              <span className="font-semibold">{new Date(day.date).toLocaleDateString()}</span>
+                              <span className="text-sm text-muted-foreground">
+                                ${day.total.toFixed(2)} • {day.orders} orders • Avg ${day.avgOrderValue.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {Object.entries(day.payments).map(([method, val]) => (
+                                <Badge key={method} variant="secondary">
+                                  {method}: ${val.amount.toFixed(2)} ({val.count})
+                                </Badge>
+                              ))}
+                            </div>
+                            <div className="space-y-1">
+                              {day.hourly.map((h) => (
+                                <div key={h.hour} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <span className="w-12">{h.hour}:00</span>
+                                  <div className="flex-1 bg-muted rounded-full h-2">
+                                    <div
+                                      className="bg-primary h-2 rounded-full"
+                                      style={{ width: `${(h.total / Math.max(...day.hourly.map((x) => x.total || 1))) * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-24 text-right text-xs">${h.total.toFixed(2)} / {h.orders}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </Card>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No Z-report data</p>
+                      )}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="restock" className="space-y-3">
+                  <h3 className="text-lg font-semibold">Restock Report</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>On Hand</TableHead>
+                        <TableHead>Reorder Point</TableHead>
+                        <TableHead>Needed</TableHead>
+                        <TableHead>Cost/Unit</TableHead>
+                        <TableHead>Est. Reorder Cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {restockItems.length ? (
+                        restockItems.map((item) => (
+                          <TableRow key={item.name}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.onHand}</TableCell>
+                            <TableCell>{item.reorderPoint}</TableCell>
+                            <TableCell>{item.needed}</TableCell>
+                            <TableCell>${item.costPerUnit.toFixed(2)}</TableCell>
+                            <TableCell>${item.reorderCost.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground">
+                            No items below reorder point
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+              </Tabs>
             </Card>
           </TabsContent>
 
           {/* Sales Visualization Tab */}
           <TabsContent value="visualization" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="p-6">
-                <h2 className="text-2xl font-bold mb-4">Top Selling Items</h2>
-                {salesData && salesData.topItems.length > 0 ? (
-                  <div className="space-y-3">
-                    {salesData.topItems.slice(0, 10).map((item, index) => (
-                      <div key={item.name} className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-primary">#{index + 1}</span>
-                          <span className="font-medium">{item.name}</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">${item.revenue.toFixed(2)}</div>
-                          <div className="text-sm text-muted-foreground">{item.quantity} sold</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No sales data available</p>
-                )}
-              </Card>
+            <Card className="p-6 space-y-4">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-bold">Sales Visualizations</h2>
+                <p className="text-sm text-muted-foreground">Select timeframe to update all charts.</p>
+              </div>
 
-              <Card className="p-6">
-                <h2 className="text-2xl font-bold mb-4">Sales by Category</h2>
-                {salesData && salesData.categorySales.length > 0 ? (
-                  <div className="space-y-3">
-                    {salesData.categorySales.map((cat) => (
-                      <div key={cat.category} className="p-3 bg-muted/50 rounded">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-medium">{cat.category}</span>
-                          <span className="font-semibold">${cat.sales.toFixed(2)}</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className="bg-primary h-2 rounded-full"
-                            style={{
-                              width: `${(cat.sales / (salesData.categorySales[0]?.sales || 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No sales data available</p>
-                )}
-              </Card>
-            </div>
+              <RangeControls />
 
-            <Card className="p-6">
-              <h2 className="text-2xl font-bold mb-4">Daily Sales (Last 30 Days)</h2>
-              {salesData && salesData.dailySales.length > 0 ? (
-                <div className="space-y-2">
-                  {salesData.dailySales.map((day) => (
-                    <div key={day.date} className="flex items-center gap-4">
-                      <div className="w-24 text-sm text-muted-foreground">
-                        {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </div>
-                      <div className="flex-1 bg-muted rounded-full h-6 relative">
-                        <div
-                          className="bg-primary h-6 rounded-full flex items-center justify-end pr-2"
-                          style={{
-                            width: `${(day.sales / Math.max(...salesData.dailySales.map(d => d.sales))) * 100}%`,
-                          }}
-                        >
-                          <span className="text-xs text-primary-foreground font-semibold">
-                            ${day.sales.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No sales data available</p>
-              )}
+              <Tabs defaultValue="hourly" className="mt-2">
+                <TabsList className="flex flex-wrap">
+                  <TabsTrigger value="hourly">Hourly Sales</TabsTrigger>
+                  <TabsTrigger value="dow">Day of Week</TabsTrigger>
+                  <TabsTrigger value="payments">Payments</TabsTrigger>
+                  <TabsTrigger value="top">Top Items</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="hourly" className="mt-4">
+                  <LineChart
+                    data={
+                      analytics?.hourly?.map((h) => ({
+                        label: `${h.hour}:00`,
+                        value: h.total,
+                        helper: `${h.orders} orders`,
+                      })) || []
+                    }
+                  />
+                </TabsContent>
+
+                <TabsContent value="dow" className="mt-4">
+                  <BarChart
+                    data={
+                      (() => {
+                        const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                        return labels.map((lbl) => {
+                          const match = analytics?.dayOfWeek?.find((d) => d.dow === lbl);
+                          return {
+                            label: lbl,
+                            value: match ? match.total : 0,
+                            helper: `${match ? match.orders : 0} orders`,
+                          };
+                        });
+                      })()
+                    }
+                  />
+                </TabsContent>
+
+                <TabsContent value="payments" className="mt-4">
+                  <BarChart
+                    data={
+                      analytics?.paymentBreakdown
+                        ? Object.entries(analytics.paymentBreakdown).map(([method, val]) => ({
+                            label: method,
+                            value: val.amount,
+                            helper: `${val.count} orders`,
+                          }))
+                        : []
+                    }
+                  />
+                </TabsContent>
+
+                <TabsContent value="top" className="mt-4">
+                  <BarChart
+                    data={
+                      analytics?.topItems
+                        ? analytics.topItems.slice(0, 5).map((item, idx) => {
+                            return {
+                              label: `#${idx + 1} ${item.name}`,
+                              value: item.revenue,
+                              helper: `${item.quantity} sold`,
+                            };
+                          })
+                        : []
+                    }
+                  />
+                </TabsContent>
+              </Tabs>
             </Card>
           </TabsContent>
         </Tabs>
