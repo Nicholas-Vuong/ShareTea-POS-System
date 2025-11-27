@@ -62,6 +62,7 @@ export const CollapsibleOrderCard = ({ order, onStatusChange }: CollapsibleOrder
                   <p>Size: {item.options.size}</p>
                   <p>Sugar: {item.options.sugar}%</p>
                   <p>Ice: {item.options.ice}</p>
+                  {item.options.temperature && <p>Temperature: {item.options.temperature}</p>}
                   {item.options.toppings && item.options.toppings.length > 0 && (
                     <p className="font-medium">+ {item.options.toppings.join(', ')}</p>
                   )}
