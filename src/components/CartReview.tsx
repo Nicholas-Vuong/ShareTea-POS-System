@@ -3,6 +3,7 @@ import { useCartStore } from '@/store/cartStore';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trash2, Plus, Minus, ArrowLeft, ArrowRight, Pencil } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAccessibilityStore } from '@/store/accessibilityStore';
 import { translateMultiple } from '@/lib/translate';
@@ -113,9 +114,41 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
 
   const handleQuantityChange = (index: number, currentQuantity: number, delta: number) => {
     const newQuantity = currentQuantity + delta;
-    if (newQuantity > 0) {
+    if (newQuantity > 0 && newQuantity <= 99) {
       const item = items[index];
       updateQuantity(item.menuItemId, newQuantity, item.options);
+    }
+  };
+
+  const handleQuantityInputChange = (index: number, value: string) => {
+    const item = items[index];
+    if (!item) return;
+    
+    // Allow empty input while typing
+    if (value === '') {
+      return;
+    }
+    
+    const numValue = parseInt(value, 10);
+    
+    // Validate: must be a number between 1 and 99
+    if (!isNaN(numValue) && numValue >= 1 && numValue <= 99) {
+      updateQuantity(item.menuItemId, numValue, item.options);
+    }
+  };
+
+  const handleQuantityInputBlur = (index: number, value: string) => {
+    const item = items[index];
+    if (!item) return;
+    
+    // If input is empty or invalid, restore to current quantity
+    const numValue = parseInt(value, 10);
+    if (isNaN(numValue) || numValue < 1 || numValue > 99) {
+      // Restore to current quantity
+      const input = document.getElementById(`quantity-input-${index}`) as HTMLInputElement;
+      if (input) {
+        input.value = item.quantity.toString();
+      }
     }
   };
 
@@ -158,6 +191,7 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
                           <h3 className="font-semibold text-lg">{item.name}</h3>
                           <p className="text-sm text-muted-foreground">
                             {displaySize} • {item.options.sugar}% {t.sugar} • {displayIce}
+                            {item.options.temperature && ` • ${item.options.temperature}`}
                           </p>
                           {displayToppings.length > 0 && (
                             <p className="text-sm text-muted-foreground">
@@ -202,12 +236,23 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
-                          <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                          <Input
+                            id={`quantity-input-${index}`}
+                            type="number"
+                            min="1"
+                            max="99"
+                            value={item.quantity}
+                            onChange={(e) => handleQuantityInputChange(index, e.target.value)}
+                            onBlur={(e) => handleQuantityInputBlur(index, e.target.value)}
+                            className="w-16 text-center font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            aria-label={`${t.quantity} for ${item.name}`}
+                          />
                           <Button
                             variant="outline"
                             size="icon"
                             onClick={() => handleQuantityChange(index, item.quantity, 1)}
                             className="h-8 w-8 touch-target"
+                            disabled={item.quantity >= 99}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
