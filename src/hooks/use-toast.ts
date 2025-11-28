@@ -3,7 +3,7 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_AUTO_DISMISS_DELAY = 5000; // 5 seconds for non-error toasts
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -52,7 +52,20 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
-const addToRemoveQueue = (toastId: string) => {
+const clearToastTimeout = (toastId: string) => {
+  const timeout = toastTimeouts.get(toastId);
+  if (timeout) {
+    clearTimeout(timeout);
+    toastTimeouts.delete(toastId);
+  }
+};
+
+const addToRemoveQueue = (toastId: string, variant?: string) => {
+  // Don't auto-dismiss error toasts (variant: "destructive")
+  if (variant === "destructive") {
+    return;
+  }
+
   if (toastTimeouts.has(toastId)) {
     return;
   }
@@ -63,7 +76,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: "REMOVE_TOAST",
       toastId: toastId,
     });
-  }, TOAST_REMOVE_DELAY);
+  }, TOAST_AUTO_DISMISS_DELAY);
 
   toastTimeouts.set(toastId, timeout);
 };
@@ -85,13 +98,12 @@ export const reducer = (state: State, action: Action): State => {
     case "DISMISS_TOAST": {
       const { toastId } = action;
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
+      // Clear any pending auto-dismiss timeouts when manually dismissing
       if (toastId) {
-        addToRemoveQueue(toastId);
+        clearToastTimeout(toastId);
       } else {
         state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id);
+          clearToastTimeout(toast.id);
         });
       }
 
@@ -108,12 +120,18 @@ export const reducer = (state: State, action: Action): State => {
       };
     }
     case "REMOVE_TOAST":
+      // Clear timeout when removing toast
       if (action.toastId === undefined) {
+        // Clear all timeouts
+        toastTimeouts.forEach((timeout) => clearTimeout(timeout));
+        toastTimeouts.clear();
         return {
           ...state,
           toasts: [],
         };
       }
+      // Clear timeout for specific toast
+      clearToastTimeout(action.toastId);
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -144,17 +162,24 @@ function toast({ ...props }: Toast) {
     });
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id });
 
+  const toastData = {
+    ...props,
+    id,
+    open: true,
+    onOpenChange: (open) => {
+      if (!open) dismiss();
+    },
+  };
+
   dispatch({
     type: "ADD_TOAST",
-    toast: {
-      ...props,
-      id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss();
-      },
-    },
+    toast: toastData,
   });
+
+  // Auto-dismiss non-error toasts after 5 seconds
+  if (props.variant !== "destructive") {
+    addToRemoveQueue(id, props.variant);
+  }
 
   return {
     id: id,
