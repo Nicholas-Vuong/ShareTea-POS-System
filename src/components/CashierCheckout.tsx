@@ -71,26 +71,17 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
   };
 
   const handleLookupOrCreateCustomer = async () => {
-    if (!customerName.trim()) {
+    // Email is required for customer lookup/creation
+    if (!customerEmail.trim()) {
       toast({
-        title: 'Missing information',
-        description: 'Please provide customer name (required)',
+        title: 'Email required',
+        description: 'Please provide customer email to lookup or create account',
         variant: 'destructive',
       });
       return;
     }
 
-    // Only lookup/create customer if email is provided
-    if (!customerEmail.trim()) {
-      toast({
-        title: 'No email provided',
-        description: 'Order will be created without a customer account',
-      });
-      setCustomerId(undefined);
-      return;
-    }
-
-    // Validate email format if provided
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail.trim())) {
       toast({
@@ -103,15 +94,33 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
 
     setIsLookingUpCustomer(true);
     try {
+      // Try to find customer by email first
+      const customer = await api.findCustomerByEmail(customerEmail.trim());
+      
+      if (customer) {
+        setCustomerId(customer.userId);
+        setCustomerName(customer.fullName || customerName || customerEmail.split('@')[0]);
+        toast({
+          title: 'Customer found',
+          description: `Found customer: ${customer.fullName || customerEmail}`,
+        });
+        setIsLookingUpCustomer(false);
+        return;
+      }
+
+      // Customer doesn't exist, create new one
+      // Use provided name or derive from email
+      const nameToUse = customerName.trim() || customerEmail.split('@')[0];
       const id = await api.findOrCreateCustomer(
         customerEmail,
-        customerName,
+        nameToUse,
         customerPhone || undefined
       );
       setCustomerId(id);
+      setCustomerName(nameToUse);
       toast({
-        title: 'Customer found/created',
-        description: 'Customer information saved',
+        title: 'Customer account created',
+        description: 'New customer account has been created',
       });
     } catch (error: any) {
       toast({
@@ -125,36 +134,50 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
   };
 
   const handleComplete = async () => {
-    if (!customerName.trim()) {
+    // Email is required for customer lookup/creation
+    if (!customerEmail.trim()) {
       toast({
-        title: 'Missing customer information',
-        description: 'Please provide customer name (required) before completing order',
+        title: 'Email required',
+        description: 'Please provide customer email to complete order',
         variant: 'destructive',
       });
       return;
     }
 
-    // If email is provided but customer hasn't been verified, verify now
-    if (customerEmail.trim() && !customerId) {
-      // Validate email format if provided
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(customerEmail.trim())) {
-        toast({
-          title: 'Invalid email',
-          description: 'Please enter a valid email address or remove it',
-          variant: 'destructive',
-        });
-        return;
-      }
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail.trim())) {
+      toast({
+        title: 'Invalid email',
+        description: 'Please enter a valid email address',
+        variant: 'destructive',
+      });
+      return;
+    }
 
+    // If customer hasn't been verified, verify now
+    let finalCustomerId = customerId;
+    if (!finalCustomerId) {
       try {
         setIsLookingUpCustomer(true);
-        const id = await api.findOrCreateCustomer(
-          customerEmail,
-          customerName,
-          customerPhone || undefined
-        );
-        setCustomerId(id);
+        // Try to find customer by email first
+        const customer = await api.findCustomerByEmail(customerEmail.trim());
+        
+        if (customer) {
+          finalCustomerId = customer.userId;
+          setCustomerId(customer.userId);
+          setCustomerName(customer.fullName || customerName || customerEmail.split('@')[0]);
+        } else {
+          // Customer doesn't exist, create new one
+          const nameToUse = customerName.trim() || customerEmail.split('@')[0];
+          finalCustomerId = await api.findOrCreateCustomer(
+            customerEmail,
+            nameToUse,
+            customerPhone || undefined
+          );
+          setCustomerId(finalCustomerId);
+          setCustomerName(nameToUse);
+        }
         setIsLookingUpCustomer(false);
       } catch (error: any) {
         setIsLookingUpCustomer(false);
@@ -165,46 +188,6 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
         });
         return;
       }
-    }
-
-    // Only lookup/create customer if email is provided
-    let finalCustomerId = customerId;
-    if (customerEmail.trim()) {
-      // Validate email format if provided
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(customerEmail.trim())) {
-        toast({
-          title: 'Invalid email',
-          description: 'Please enter a valid email address',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // If customer hasn't been looked up yet, do it now
-      if (!finalCustomerId) {
-        try {
-          setIsLookingUpCustomer(true);
-          finalCustomerId = await api.findOrCreateCustomer(
-            customerEmail,
-            customerName,
-            customerPhone || undefined
-          );
-          setCustomerId(finalCustomerId);
-          setIsLookingUpCustomer(false);
-        } catch (error: any) {
-          setIsLookingUpCustomer(false);
-          toast({
-            title: 'Failed to process customer',
-            description: error.message || 'Please try again',
-            variant: 'destructive',
-          });
-          return;
-        }
-      }
-    } else {
-      // No email provided - one-time order without account
-      finalCustomerId = undefined;
     }
 
     onComplete(paymentMethod, appliedPromoCode, finalCustomerId);
@@ -230,17 +213,20 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
                 <Label className="text-lg font-semibold mb-3 block">Customer Information</Label>
                 <div className="space-y-3">
                   <div>
-                    <Label htmlFor="customer-name">Full Name *</Label>
+                    <Label htmlFor="customer-name">Full Name (Optional)</Label>
                     <Input
                       id="customer-name"
-                      placeholder="Customer full name"
+                      placeholder="Customer full name (auto-filled if found)"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       className="mt-1"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Will be auto-filled when customer is found, or derived from email if creating new account
+                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="customer-email">Email (Optional)</Label>
+                    <Label htmlFor="customer-email">Email *</Label>
                     <Input
                       id="customer-email"
                       type="email"
@@ -248,12 +234,11 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       className="mt-1"
+                      required
                     />
-                    {!customerEmail.trim() && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Order will be created without a customer account
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter email to lookup or create customer account
+                    </p>
                   </div>
                   <div>
                     <Label htmlFor="customer-phone">Phone (Optional)</Label>
@@ -268,7 +253,7 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
                   </div>
                   <Button
                     onClick={handleLookupOrCreateCustomer}
-                    disabled={isLookingUpCustomer || !customerName.trim()}
+                    disabled={isLookingUpCustomer || !customerEmail.trim()}
                     variant="outline"
                     className="w-full"
                   >
@@ -276,9 +261,7 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
                       ? 'Processing...' 
                       : customerId 
                         ? 'Customer Verified ✓' 
-                        : customerEmail.trim()
-                          ? 'Lookup/Create Customer'
-                          : 'Skip Customer Account'}
+                        : 'Lookup/Create Customer'}
                   </Button>
                 </div>
               </div>
@@ -400,26 +383,20 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
               size="lg"
               disabled={
                 items.length === 0 || 
-                !customerName.trim() || 
-                isLookingUpCustomer ||
-                (customerEmail.trim() && !customerId)
+                !customerEmail.trim() || 
+                isLookingUpCustomer
               }
             >
               Complete Order
             </Button>
-            {!customerName.trim() && (
+            {!customerEmail.trim() && (
               <p className="text-sm text-muted-foreground mt-2 text-center">
-                Please enter customer name to continue
+                Please enter customer email to continue
               </p>
             )}
-            {customerName.trim() && customerEmail.trim() && !customerId && !isLookingUpCustomer && (
+            {customerEmail.trim() && !customerId && !isLookingUpCustomer && (
               <p className="text-sm text-muted-foreground mt-2 text-center">
-                Please click "Lookup/Create Customer" to verify account, or remove email for one-time order
-              </p>
-            )}
-            {customerName.trim() && !customerEmail.trim() && (
-              <p className="text-sm text-muted-foreground mt-2 text-center">
-                Order will be created as one-time order (no account)
+                Click "Lookup/Create Customer" to verify account, or proceed to create account automatically
               </p>
             )}
           </Card>
