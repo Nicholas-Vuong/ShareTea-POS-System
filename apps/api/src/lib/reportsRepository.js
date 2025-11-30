@@ -6,28 +6,28 @@ export async function getSalesSummary ({ from, to }) {
 
   if (from) {
     params.push(from)
-    filters.push(`created_at >= $${params.length}`)
+    filters.push(`o.order_time >= $${params.length}`)
   }
 
   if (to) {
     params.push(to)
-    filters.push(`created_at <= $${params.length}`)
+    filters.push(`o.order_time <= $${params.length}`)
   }
 
   const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
   const salesQuery = `
     SELECT
       COUNT(*) AS order_count,
-      COALESCE(SUM(total), 0) AS revenue,
-      COALESCE(SUM(total) FILTER (WHERE status = 'PAID' OR status = 'COMPLETED'), 0) AS paid_revenue
-    FROM orders
+      COALESCE(SUM(o.total), 0) AS revenue,
+      COALESCE(SUM(o.total) FILTER (WHERE o.status = 'PAID' OR o.status = 'COMPLETED'), 0) AS paid_revenue
+    FROM orders o
     ${whereClause}`
 
   const topItemsQuery = `
     SELECT mi.name, SUM(oi.quantity) AS total_sold
     FROM order_items oi
-    JOIN orders o ON oi.order_id = o.id
-    JOIN menu_items mi ON oi.menu_item_id = mi.id
+    JOIN orders o ON oi.order_id = o.order_id
+    JOIN menu_items mi ON oi.menu_item_id = mi.menu_item_id
     ${whereClause ? `${whereClause} AND` : 'WHERE'} o.status IN ('PAID', 'COMPLETED')
     GROUP BY mi.name
     ORDER BY total_sold DESC
@@ -47,14 +47,14 @@ export async function getSalesSummary ({ from, to }) {
 export async function getInventoryStatus () {
   const { rows } = await pool.query(
     `SELECT
-       id,
+       inventory_item_id AS id,
        name,
-       quantity,
+       on_hand_quantity AS quantity,
        unit,
-       threshold,
-       (quantity <= threshold) AS needs_restock
+       reorder_point AS threshold,
+       (on_hand_quantity <= reorder_point) AS needs_restock
      FROM inventory_items
-     ORDER BY quantity ASC`
+     ORDER BY on_hand_quantity ASC`
   )
   return rows
 }
