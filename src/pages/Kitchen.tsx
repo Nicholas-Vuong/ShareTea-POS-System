@@ -1,3 +1,14 @@
+/**
+ * Kitchen Display Page
+ * 
+ * Displays orders for kitchen staff to prepare
+ * Features:
+ * - Real-time order updates (refreshes every 5 seconds)
+ * - Priority-based sorting (older orders with longer prep times get higher priority)
+ * - Status management (PLACED → PREPARING → READY → COMPLETED)
+ * - Ability to re-open completed orders
+ * - Separate views for active orders and past orders
+ */
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Order, api, MenuItem } from '@/lib/api';
@@ -17,9 +28,14 @@ export default function Kitchen() {
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 
+  /**
+   * Fetches menu items and stores them in a Map for efficient lookup
+   * Menu items are needed to calculate order priority based on item complexity
+   */
   const fetchMenuItems = async () => {
     try {
       const items = await api.getMenu();
+      // Convert array to Map for O(1) lookup by ID
       const menuMap = new Map<string, MenuItem>();
       items.forEach((item) => {
         menuMap.set(item.id, item);
@@ -30,14 +46,20 @@ export default function Kitchen() {
     }
   };
 
+  /**
+   * Fetches orders from the kitchen queue
+   * Sorts orders by priority if menu items are available
+   * Priority calculation requires menu item data to estimate prep times
+   */
   const fetchOrders = useCallback(async () => {
     try {
       const data = await api.getKitchenQueueWithCompleted();
-      // Sort orders by priority if we have menu items
+      // Sort orders by priority if we have menu items (needed for prep time calculation)
       if (menuItems.size > 0) {
         const sortedOrders = sortOrdersByPriority(data, menuItems);
         setOrders(sortedOrders);
       } else {
+        // If menu items not loaded yet, just set orders without sorting
         setOrders(data);
       }
     } catch (error) {
@@ -45,22 +67,31 @@ export default function Kitchen() {
     }
   }, [menuItems]);
 
+  // Fetch menu items on component mount (needed for priority calculation)
   useEffect(() => {
     fetchMenuItems();
   }, []);
 
+  // Set up polling for orders when menu items are loaded
+  // Refreshes every 5 seconds to show real-time order updates
   useEffect(() => {
     if (menuItems.size > 0) {
-      fetchOrders();
-      const interval = setInterval(fetchOrders, 5000);
-      return () => clearInterval(interval);
+      fetchOrders(); // Initial fetch
+      const interval = setInterval(fetchOrders, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval); // Cleanup on unmount
     }
   }, [menuItems, fetchOrders]);
 
+  /**
+   * Handles order status changes (e.g., PLACED → PREPARING → READY → COMPLETED)
+   * Updates the order in the database and refreshes the order list
+   * @param orderId - ID of the order to update
+   * @param status - New status for the order
+   */
   const handleStatusChange = async (orderId: string, status: 'PREPARING' | 'READY' | 'COMPLETED') => {
     try {
       await api.updateOrderStatus(orderId, status);
-      await fetchOrders();
+      await fetchOrders(); // Refresh order list to show updated status
       toast({
         title: 'Order updated',
         description: `Order moved to ${status}`,

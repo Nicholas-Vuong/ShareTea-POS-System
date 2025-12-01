@@ -1,3 +1,17 @@
+/**
+ * Item Customizer Component
+ * 
+ * Allows users to customize menu items before adding to cart
+ * Features:
+ * - Size selection (Small, Medium, Large)
+ * - Sugar level selection (0%, 25%, 50%, 75%, 100%)
+ * - Ice level selection (No Ice, Less Ice, Normal, Extra Ice)
+ * - Topping selection (multiple toppings can be selected)
+ * - Quantity adjustment
+ * - Real-time nutrition information based on customizations
+ * - Multi-language support with automatic translation
+ * - Edit mode for updating existing cart items
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,6 +26,9 @@ import { translateText, translateMultiple } from '@/lib/translate';
 import { NutritionInfoPanel } from '@/components/NutritionInfoPanel';
 import type { CustomizationOptions } from '@/lib/nutrition';
 
+/**
+ * Props for ItemCustomizer component
+ */
 interface ItemCustomizerProps {
   menuItemId: string;
   itemName: string;
@@ -84,7 +101,30 @@ export const ItemCustomizer = ({
   const [translatedToppings, setTranslatedToppings] = useState<Map<string, string>>(new Map());
   const isEditMode = mode === 'edit';
 
-  // Translate item name
+  // State for customization options
+  const [size, setSize] = useState<'Small' | 'Medium' | 'Large'>(initialOptions?.size ?? 'Small');
+  const [sugar, setSugar] = useState(initialOptions?.sugar ?? 100);
+  const [ice, setIce] = useState<'No Ice' | 'Less Ice' | 'Normal' | 'Extra Ice'>(initialOptions?.ice ?? 'Normal');
+  const [toppings, setToppings] = useState<string[]>(
+    () => (initialOptions?.toppings ? [...initialOptions.toppings] : [])
+  );
+  const [quantity, setQuantity] = useState(initialQuantity ?? 1);
+
+  /**
+   * Memoized customization options for nutrition calculation
+   * Recalculates when any customization changes
+   */
+  const nutritionCustomization = useMemo<CustomizationOptions>(
+    () => ({
+      size,
+      sugarPercentage: sugar,
+      iceLevel: ice,
+      toppings,
+    }),
+    [size, sugar, ice, toppings]
+  );
+
+  // Translate item name when language or item name changes
   useEffect(() => {
     let cancelled = false;
 
@@ -114,7 +154,7 @@ export const ItemCustomizer = ({
     };
   }, [itemName, language]);
 
-  // Translate toppings
+  // Translate toppings list when language changes
   useEffect(() => {
     let cancelled = false;
 
@@ -125,10 +165,12 @@ export const ItemCustomizer = ({
       }
 
       try {
+        // Translate all toppings in batch
         const translatedToppingNames = await translateMultiple(toppingsList, language, 'en');
         
         if (cancelled) return;
 
+        // Create map of original -> translated topping names
         const toppingMap = new Map<string, string>();
         toppingsList.forEach((topping, index) => {
           toppingMap.set(topping, translatedToppingNames[index] || topping);
@@ -140,7 +182,7 @@ export const ItemCustomizer = ({
       } catch (error) {
         console.error('Error translating toppings:', error);
         if (!cancelled) {
-          setTranslatedToppings(new Map());
+          setTranslatedToppings(new Map()); // Fallback to empty map
         }
       }
     };
@@ -152,30 +194,17 @@ export const ItemCustomizer = ({
     };
   }, [language]);
 
-  const [size, setSize] = useState<'Small' | 'Medium' | 'Large'>(initialOptions?.size ?? 'Small');
-  const [sugar, setSugar] = useState(initialOptions?.sugar ?? 100);
-  const [ice, setIce] = useState<'No Ice' | 'Less Ice' | 'Normal' | 'Extra Ice'>(initialOptions?.ice ?? 'Normal');
-  const [toppings, setToppings] = useState<string[]>(
-    () => (initialOptions?.toppings ? [...initialOptions.toppings] : [])
-  );
-  const [quantity, setQuantity] = useState(initialQuantity ?? 1);
-  const nutritionCustomization = useMemo<CustomizationOptions>(
-    () => ({
-      size,
-      sugarPercentage: sugar,
-      iceLevel: ice,
-      toppings,
-    }),
-    [size, sugar, ice, toppings]
-  );
-
+  // Reset customization options when initialOptions or menuItemId changes
+  // This handles switching between different items or entering edit mode
   useEffect(() => {
     if (initialOptions) {
+      // Use provided initial options (edit mode)
       setSize(initialOptions.size);
       setSugar(initialOptions.sugar);
       setIce(initialOptions.ice);
       setToppings(initialOptions.toppings ? [...initialOptions.toppings] : []);
     } else {
+      // Reset to defaults (add mode)
       setSize('Small');
       setSugar(100);
       setIce('Normal');
@@ -183,18 +212,28 @@ export const ItemCustomizer = ({
     }
   }, [initialOptions, menuItemId]);
 
+  // Reset quantity when initialQuantity or menuItemId changes
   useEffect(() => {
     setQuantity(initialQuantity ?? 1);
   }, [initialQuantity, menuItemId]);
 
+  /**
+   * Toggles a topping on/off
+   * If topping is already selected, removes it; otherwise adds it
+   * @param topping - Name of the topping to toggle
+   */
   const handleToppingToggle = (topping: string) => {
     setToppings((prev) =>
       prev.includes(topping)
-        ? prev.filter((t) => t !== topping)
-        : [...prev, topping]
+        ? prev.filter((t) => t !== topping) // Remove if already selected
+        : [...prev, topping] // Add if not selected
     );
   };
 
+  /**
+   * Handles adding/updating item in cart
+   * Passes current customization options and quantity to parent component
+   */
   const handleAddToCart = () => {
     onAddToCart(quantity, { size, sugar, ice, toppings });
   };

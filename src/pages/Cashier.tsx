@@ -25,6 +25,19 @@ import { Search, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
 
+/**
+ * Cashier POS Page
+ * 
+ * Main interface for cashiers to take orders
+ * Features:
+ * - Menu browsing with category filtering and search
+ * - Item customization (size, sugar, ice, toppings)
+ * - Shopping cart management
+ * - Order checkout with payment method and promo codes
+ * - Customer creation/selection
+ * - Order receipt display
+ * - Navigation confirmation dialogs to prevent accidental data loss
+ */
 type View = 'menu' | 'cartReview' | 'checkout' | 'receipt';
 
 export default function Cashier() {
@@ -85,6 +98,11 @@ export default function Cashier() {
       });
   }, [toast]);
 
+  /**
+   * Resets the item customization state
+   * Clears selected item and edit context, optionally navigates to a new view
+   * @param nextView - Optional view to navigate to after reset
+   */
   const resetCustomizationState = (nextView?: View) => {
     setSelectedItem(null);
     setEditContext(null);
@@ -93,12 +111,19 @@ export default function Cashier() {
     }
   };
 
+  /**
+   * Requests confirmation before navigating away from item customization
+   * Shows a dialog if an item is being customized to prevent accidental data loss
+   * @param action - Action to perform after confirmation (or immediately if no item selected)
+   */
   const requestNavigationConfirmation = (action: () => void) => {
     if (selectedItem) {
+      // Store the action and show confirmation dialog
       pendingNavigation.current = action;
       setIsCancelDialogOpen(true);
       return;
     }
+    // No item selected, proceed immediately
     action();
   };
 
@@ -130,6 +155,13 @@ export default function Cashier() {
     });
   };
 
+  /**
+   * Handles adding or updating items in the cart
+   * Supports both adding new items and editing existing items
+   * @param item - Menu item to add/update
+   * @param quantity - Quantity of the item
+   * @param options - Customization options (size, sugar, ice, toppings)
+   */
   const handleAddToCart = (item: MenuItem, quantity: number, options: CartItemOptions) => {
     const cartItemPayload = {
       menuItemId: item.id,
@@ -141,6 +173,7 @@ export default function Cashier() {
     };
 
     if (isEditingItem && editContext) {
+      // Update existing cart item
       const { index, returnView } = editContext;
       updateItemByIndex(index, cartItemPayload);
       resetCustomizationState(returnView);
@@ -149,6 +182,7 @@ export default function Cashier() {
         description: `${quantity}x ${item.name}`,
       });
     } else {
+      // Add new item to cart
       addItem(cartItemPayload);
       resetCustomizationState();
       toast({
@@ -166,10 +200,16 @@ export default function Cashier() {
     setView('checkout');
   };
 
+  /**
+   * Handles editing a cart item
+   * Opens the item customizer with the item's current options pre-filled
+   * @param index - Index of the cart item to edit
+   */
   const handleEditCartItem = (index: number) => {
     const cartItem = items[index];
     if (!cartItem) return;
 
+    // Find the menu item to ensure it still exists
     const menuItem = menu.find((menuEntry) => menuEntry.id === cartItem.menuItemId);
 
     if (!menuItem) {
@@ -181,22 +221,31 @@ export default function Cashier() {
       return;
     }
 
+    // Set up edit context with current item data
     setSelectedCategory(menuItem.category);
     setSelectedItem(menuItem);
     setEditContext({
       index,
       item: cartItem,
-      returnView: 'cartReview',
+      returnView: 'cartReview', // Return to cart review after editing
     });
-    setView('menu');
+    setView('menu'); // Switch to menu view to show customizer
   };
 
+  /**
+   * Completes an order by creating it in the database
+   * Handles promo code validation, discount calculation, tax, and receipt generation
+   * @param paymentMethod - Payment method used (cash, card, etc.)
+   * @param promoCode - Optional promo code for discount
+   * @param customerId - Optional customer ID if customer account exists
+   */
   const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null, customerId?: string) => {
     try {
       const cartItems = useCartStore.getState().items;
       const subtotal = getTotal();
       
       // Calculate discount if promo code provided
+      // Hardcoded promo codes: SAVE10 (10%), SAVE20 (20%), WELCOME (15%)
       let discount = 0;
       if (promoCode) {
         const promoDiscounts: Record<string, number> = {
@@ -208,6 +257,7 @@ export default function Cashier() {
         discount = subtotal * discountPercent;
       }
       
+      // Create order in database
       const order = await api.createOrder({
         source: 'cashier',
         items: cartItems.map((item) => ({
@@ -221,7 +271,7 @@ export default function Cashier() {
         customerId: customerId,
       });
       
-      // Prepare receipt data
+      // Prepare receipt data for display
       const receiptItems = cartItems.map((item) => ({
         name: item.name,
         quantity: item.quantity,
@@ -230,6 +280,7 @@ export default function Cashier() {
         options: item.options,
       }));
       
+      // Calculate tax (8.25%) and final total
       const tax = (subtotal - discount) * 0.0825;
       const total = subtotal - discount + tax;
       

@@ -70,6 +70,13 @@ const ZERO_MACROS: MacroBreakdown = {
   protein: 0,
 };
 
+/**
+ * Adds two macro breakdowns together
+ * Used to accumulate nutrition values from multiple ingredients
+ * @param current - Current macro totals
+ * @param delta - Additional macros to add
+ * @returns Combined macro breakdown
+ */
 function addMacros(current: MacroBreakdown, delta: MacroBreakdown): MacroBreakdown {
   return {
     calories: current.calories + delta.calories,
@@ -80,6 +87,13 @@ function addMacros(current: MacroBreakdown, delta: MacroBreakdown): MacroBreakdo
   };
 }
 
+/**
+ * Calculates macros for a given quantity of an ingredient
+ * Multiplies the ingredient's per-unit macros by the quantity
+ * @param ingredientId - ID of the ingredient
+ * @param quantity - Quantity of the ingredient
+ * @returns Macro breakdown for the specified quantity
+ */
 function multiplyIngredientMacros(ingredientId: IngredientId, quantity: number): MacroBreakdown {
   const ingredient = INGREDIENTS[ingredientId];
   return {
@@ -91,6 +105,12 @@ function multiplyIngredientMacros(ingredientId: IngredientId, quantity: number):
   };
 }
 
+/**
+ * Formats a numeric quantity to a readable string
+ * Rounds to 1 decimal place if needed, otherwise shows as integer
+ * @param quantity - Numeric quantity to format
+ * @returns Formatted string (e.g., "5" or "5.5")
+ */
 function formatAmount(quantity: number): string {
   const rounded = Math.round(quantity * 10) / 10;
   if (Math.abs(rounded - Math.round(rounded)) < 0.01) {
@@ -99,6 +119,13 @@ function formatAmount(quantity: number): string {
   return rounded.toFixed(1);
 }
 
+/**
+ * Formats a quantity with its appropriate unit
+ * Handles pluralization for units like "pump" -> "pumps"
+ * @param quantity - Numeric quantity
+ * @param ingredientId - ID of the ingredient to get unit from
+ * @returns Formatted string with unit (e.g., "5 oz", "2 pumps")
+ */
 function formatQuantity(quantity: number, ingredientId: IngredientId): string {
   const unit = INGREDIENTS[ingredientId].unit;
   switch (unit) {
@@ -117,6 +144,12 @@ function formatQuantity(quantity: number, ingredientId: IngredientId): string {
   }
 }
 
+/**
+ * Rounds a nutrition value to 1 decimal place
+ * Used for final nutrition display values
+ * @param value - Value to round
+ * @returns Rounded value to 1 decimal place
+ */
 function roundValue(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -124,12 +157,24 @@ function roundValue(value: number): number {
 const DRINK_SIZES: DrinkSize[] = ['Small', 'Medium', 'Large'];
 const DEFAULT_TOPPING_QUANTITY = 1;
 
+/**
+ * Normalizes a drink size to a valid DrinkSize
+ * Defaults to 'Medium' if size is invalid or missing
+ * @param size - Size string to normalize
+ * @returns Valid DrinkSize (Small, Medium, or Large)
+ */
 function normalizeSize(size?: DrinkSize | string | null): DrinkSize {
   if (!size) return 'Medium';
   const match = DRINK_SIZES.find((s) => s === size);
   return match ?? 'Medium';
 }
 
+/**
+ * Clamps sugar percentage to valid range (0-150%)
+ * Defaults to 100% if value is invalid or missing
+ * @param value - Sugar percentage to clamp
+ * @returns Valid sugar percentage between 0 and 150
+ */
 function clampSugarPercentage(value?: number): number {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return 100;
@@ -137,16 +182,27 @@ function clampSugarPercentage(value?: number): number {
   return Math.min(150, Math.max(0, Math.round(value)));
 }
 
+/**
+ * Builds nutrition information from assumed recipe data
+ * Calculates nutrition by summing ingredients based on recipe and customizations
+ * Handles size, sugar level, ice level, and toppings adjustments
+ * @param menuItemId - ID of the menu item
+ * @param menuItemName - Name of the menu item
+ * @param customization - Optional customization options (size, sugar, ice, toppings)
+ * @returns Nutrition payload or null if recipe not found
+ */
 function buildAssumedNutrition(
   menuItemId: number,
   menuItemName: string,
   customization?: CustomizationOptions
 ): MenuItemNutritionPayload | null {
+  // Get recipe for this menu item
   const recipe = getRecipeByMenuItemId(menuItemId);
   if (!recipe) {
     return null;
   }
 
+  // Normalize customization values with defaults
   const size = normalizeSize(customization?.size);
   const sugarPercentage =
     customization?.sugarPercentage !== undefined
@@ -160,9 +216,11 @@ function buildAssumedNutrition(
     return null;
   }
 
+  // Initialize totals and ingredient list
   let totals = { ...ZERO_MACROS };
   const ingredients: IngredientDetail[] = [];
 
+  // Calculate nutrition from base components (tea, milk, etc.)
   profile.components.forEach((componentPortion) => {
     const macros = multiplyIngredientMacros(componentPortion.ingredientId, componentPortion.quantity);
     totals = addMacros(totals, macros);
@@ -173,8 +231,10 @@ function buildAssumedNutrition(
     });
   });
 
+  // Calculate nutrition from sweeteners (adjusted by sugar percentage)
   profile.sweeteners?.forEach((sweetenerPortion) => {
     const baseQuantity = sweetenerPortion.quantity;
+    // Scale sweetener quantity based on sugar percentage if it adjusts with sugar
     const quantity =
       sweetenerPortion.adjustsWithSugar === false
         ? baseQuantity
@@ -193,6 +253,7 @@ function buildAssumedNutrition(
     });
   });
 
+  // Add nutrition from extra toppings selected by customer
   const extraToppings: IngredientId[] = [];
   toppings.forEach((toppingName) => {
     const ingredientId = TOPPING_INGREDIENT_MAP[toppingName];
@@ -208,10 +269,12 @@ function buildAssumedNutrition(
     }
   });
 
+  // Build summary text for disclaimers
   const toppingSummary = extraToppings.length
     ? `${extraToppings.length} added topping${extraToppings.length > 1 ? 's' : ''}`
     : 'no extra toppings';
 
+  // Build notes about customizations that affect nutrition
   const notes: string[] = [];
   if (recipe.notes) {
     notes.push(recipe.notes);

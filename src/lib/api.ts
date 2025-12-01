@@ -1,6 +1,14 @@
+/**
+ * API client for Sharetea POS system
+ * Handles all database interactions via Supabase
+ * Includes authentication, orders, menu, inventory, and reporting functionality
+ */
 import { supabase } from './supabase';
 import bcrypt from 'bcryptjs';
 
+/**
+ * Menu item interface representing a product available for purchase
+ */
 export interface MenuItem {
   id: string;
   name: string;
@@ -89,7 +97,16 @@ export interface Order {
   priority?: number;
 }
 
+/**
+ * Main API object containing all API methods
+ * All methods handle database schema transformations and error handling
+ */
 export const api = {
+  /**
+   * Fetches all active menu items from the database
+   * Filters to only active items and transforms database schema to frontend format
+   * @returns Array of active menu items sorted by category
+   */
   async getMenu(): Promise<MenuItem[]> {
     const { data, error } = await supabase
       .from('menu_items')
@@ -110,8 +127,13 @@ export const api = {
     }));
   },
 
+  /**
+   * Fetches inventory items that are at or below their reorder point
+   * Attempts to use database view first for efficiency, falls back to manual filtering
+   * @returns Array of low stock items with inventory details
+   */
   async getLowStock(): Promise<LowStockItem[]> {
-    // Try the view first if it exists
+    // Try the view first if it exists (more efficient database-level filtering)
     const { data: viewData, error: viewError } = await supabase
       .from('low_stock_items')
       .select('*');
@@ -148,8 +170,16 @@ export const api = {
     }));
   },
 
+  /**
+   * Creates a new order in the database
+   * Handles order creation, item insertion, price calculation, and totals computation
+   * Supports both kiosk and cashier order sources with fallback for schema compatibility
+   * @param order - Order request with items, source, payment method, and optional customer ID
+   * @returns Created order with populated item names
+   * @throws Error if order creation fails or items are invalid
+   */
   async createOrder(order: CreateOrderRequest): Promise<Order> {
-    // Validate that we have items
+    // Validate that we have items before proceeding
     if (!order.items || order.items.length === 0) {
       throw new Error('Cannot create order with no items');
     }
@@ -297,9 +327,15 @@ export const api = {
     };
   },
 
+  /**
+   * Fetches orders that are in progress (PLACED, PREPARING, or READY status)
+   * Used by kitchen staff to see what needs to be prepared
+   * Includes nested order items with menu item names via database joins
+   * @returns Array of in-progress orders sorted by order time (oldest first)
+   */
   async getKitchenQueue(): Promise<Order[]> {
-    // Query orders with their items
-    // Try with source column first, fallback without if it doesn't exist
+    // Query orders with their items using Supabase nested select
+    // Try with source column first, fallback without if it doesn't exist (schema compatibility)
     let selectQuery = `
       order_id,
       status,
@@ -361,6 +397,14 @@ export const api = {
     }));
   },
 
+  /**
+   * Updates the status of an order
+   * Allows all status transitions including re-opening completed orders
+   * Status flow: PLACED → PREPARING → READY → COMPLETED → PREPARING (re-open)
+   * @param orderId - ID of the order to update
+   * @param status - New status for the order
+   * @throws Error if update fails
+   */
   async updateOrderStatus(orderId: string, status: 'PREPARING' | 'READY' | 'COMPLETED'): Promise<void> {
     // Allow COMPLETED → PREPARING transition for re-opening orders
     // All transitions are allowed: PLACED → PREPARING → READY → COMPLETED → PREPARING (re-open)
@@ -372,9 +416,15 @@ export const api = {
     if (error) throw new Error(`Failed to update order status: ${error.message}`);
   },
 
+  /**
+   * Fetches all orders including completed ones for kitchen view
+   * Allows kitchen staff to see and re-open completed orders if needed
+   * Filters out orders with no items as a safety check
+   * @returns Array of orders including completed ones, sorted by most recent first
+   */
   async getKitchenQueueWithCompleted(): Promise<Order[]> {
     // Query orders including COMPLETED status for re-opening capability
-    // Try with source column first, fallback without if it doesn't exist
+    // Try with source column first, fallback without if it doesn't exist (schema compatibility)
     let selectQuery = `
       order_id,
       status,
@@ -447,8 +497,17 @@ export const api = {
     return mappedOrders.filter(order => order.items.length > 0);
   },
 
+  /**
+   * Fetches all orders for a specific customer
+   * Includes error handling for individual order mapping failures
+   * Returns orders sorted by most recent first
+   * @param userId - Customer user ID
+   * @returns Array of customer orders with full item details
+   * @throws Error if user ID is invalid or query fails
+   */
   async getCustomerOrders(userId: string): Promise<Order[]> {
     try {
+      // Validate and convert user ID to number
       const userIdNum = parseInt(userId);
       if (isNaN(userIdNum)) {
         throw new Error(`Invalid user ID: ${userId}`);
@@ -515,6 +574,13 @@ export const api = {
     }
   },
 
+  /**
+   * Fetches the current status of a specific order
+   * Used for order tracking and status updates
+   * @param orderId - ID of the order to fetch
+   * @returns Order object or null if not found
+   * @throws Error if query fails
+   */
   async getRecentOrderStatus(orderId: string): Promise<Order | null> {
     const { data: order, error } = await supabase
       .from('orders')
@@ -550,6 +616,16 @@ export const api = {
     };
   },
 
+  /**
+   * Finds an existing customer by email or creates a new customer account
+   * Used when cashier creates orders for customers who may not have accounts
+   * Creates customer with placeholder password that can be reset later
+   * @param email - Customer email address (optional)
+   * @param fullName - Customer's full name
+   * @param phone - Customer phone number (optional, currently unused)
+   * @returns Customer user ID if email provided, undefined for one-time orders
+   * @throws Error if customer creation fails or role not found
+   */
   async findOrCreateCustomer(
     email: string | undefined,
     fullName: string,
@@ -641,13 +717,23 @@ export const api = {
     return newUser.user_id.toString();
   },
 
+  /**
+   * Fetches orders that are in progress or recently completed for a customer
+   * Used for customer order tracking to show active and recent orders
+   * Combines in-progress orders with recently completed orders within time window
+   * @param userId - Customer user ID
+   * @param timeWindowMinutes - Number of minutes to look back for completed orders (default: 5)
+   * @returns Array of orders sorted by most recent first
+   * @throws Error if queries fail
+   */
   async getOrdersInProgressOrRecent(userId: string, timeWindowMinutes: number = 5): Promise<Order[]> {
+    // Calculate cutoff time for recently completed orders
     const now = new Date();
     const cutoffTime = new Date(now.getTime() - timeWindowMinutes * 60 * 1000);
     const cutoffTimeStr = cutoffTime.toISOString();
 
     // Fetch orders in progress (PLACED, PREPARING, READY) or recently completed
-    // Use separate queries and combine results for better compatibility
+    // Use separate queries and combine results for better database compatibility
     const [inProgressResult, recentCompletedResult] = await Promise.all([
       supabase
         .from('orders')
@@ -712,6 +798,18 @@ export const api = {
     throw new Error('Authentication not yet implemented. Please use login.');
   },
 
+  /**
+   * Creates a new user account with the specified role
+   * Validates username and email uniqueness (case-insensitive)
+   * Hashes password using bcrypt before storage
+   * @param username - Unique username (case-insensitive check)
+   * @param password - Plain text password (will be hashed)
+   * @param fullName - User's full name
+   * @param role - User role (Manager, Cashier, Barista, or Customer)
+   * @param email - Optional email address
+   * @returns User ID, role, and optional email
+   * @throws Error if username/email exists, role invalid, or creation fails
+   */
   async signUp(
     username: string,
     password: string,
@@ -720,7 +818,7 @@ export const api = {
     email?: string
   ): Promise<{ userId: string; role: string; email?: string }> {
     // Check if username already exists (case-insensitive)
-    // Fetch all users and compare case-insensitively
+    // Fetch all users and compare case-insensitively (Supabase doesn't support case-insensitive queries directly)
     const { data: allUsers } = await supabase
       .from('users')
       .select('user_id, username');
@@ -797,8 +895,19 @@ export const api = {
     };
   },
 
+  /**
+   * Authenticates a user by username or email with password
+   * Supports login with either username or email address
+   * Performs case-insensitive username matching
+   * Verifies password using bcrypt comparison
+   * @param identifier - Username or email address
+   * @param password - Plain text password to verify
+   * @returns User ID, role, and optional email if authentication succeeds
+   * @throws Error if credentials are invalid or account has no password
+   */
   async login(identifier: string, password: string): Promise<{ userId: string; role: 'manager' | 'cashier' | 'barista' | 'customer'; email?: string }> {
     // Determine if identifier is an email (contains @) or username
+    // This affects which lookup strategy to use first
     const isEmail = identifier.includes('@');
     
     let user;
@@ -950,7 +1059,14 @@ export const api = {
     return allUsers.some((u) => u.username.toLowerCase() === usernameLower);
   },
 
-  // Manager API functions
+  // ==================== Manager API Functions ====================
+  
+  /**
+   * Fetches all menu items (including inactive ones) for manager view
+   * Used for menu management where all items need to be visible
+   * @returns Array of all menu items sorted by category
+   * @throws Error if query fails
+   */
   async getAllMenuItems(): Promise<MenuItem[]> {
     const { data, error } = await supabase
       .from('menu_items')
@@ -969,10 +1085,19 @@ export const api = {
     }));
   },
 
+  /**
+   * Updates a menu item with new values
+   * Only updates fields that are provided (partial update)
+   * Maps frontend field names to database column names
+   * @param id - Menu item ID to update
+   * @param updates - Partial object with fields to update
+   * @throws Error if update fails
+   */
   async updateMenuItem(
     id: string,
     updates: Partial<{ name: string; category: string; price: number; description: string; active: boolean }>
   ): Promise<void> {
+    // Build update object, only including provided fields
     const updateData: any = {};
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.category !== undefined) updateData.category = updates.category;
@@ -988,6 +1113,13 @@ export const api = {
     if (error) throw new Error(`Failed to update menu item: ${error.message}`);
   },
 
+  /**
+   * Updates the USDA Food Data Central ID for a menu item
+   * Used to cache USDA FDC ID after successful nutrition lookup
+   * @param menuItemId - Menu item ID to update
+   * @param fdcId - USDA FDC ID or null to clear
+   * @throws Error if update fails
+   */
   async updateMenuItemFdcId(menuItemId: string, fdcId: number | null): Promise<void> {
     const { error } = await supabase
       .from('menu_items')
@@ -997,6 +1129,13 @@ export const api = {
     if (error) throw new Error(`Failed to update menu item USDA FDC ID: ${error.message}`);
   },
 
+  /**
+   * Creates a new menu item in the database
+   * Sets active to true by default if not specified
+   * @param item - Menu item data to create
+   * @returns Created menu item with transformed schema
+   * @throws Error if creation fails
+   */
   async createMenuItem(item: {
     name: string;
     category: string;
@@ -1028,6 +1167,12 @@ export const api = {
     };
   },
 
+  /**
+   * Deletes a menu item from the database
+   * Note: This is a hard delete - consider soft delete (setting active=false) instead
+   * @param id - Menu item ID to delete
+   * @throws Error if deletion fails
+   */
   async deleteMenuItem(id: string): Promise<void> {
     const { error } = await supabase
       .from('menu_items')
@@ -1037,6 +1182,12 @@ export const api = {
     if (error) throw new Error(`Failed to delete menu item: ${error.message}`);
   },
 
+  /**
+   * Fetches all inventory items for manager view
+   * Includes all inventory details needed for management
+   * @returns Array of inventory items sorted by name
+   * @throws Error if query fails
+   */
   async getAllInventoryItems(): Promise<InventoryItem[]> {
     const { data, error } = await supabase
       .from('inventory_items')
@@ -1058,6 +1209,14 @@ export const api = {
     }));
   },
 
+  /**
+   * Updates an inventory item with new values
+   * Only updates fields that are provided (partial update)
+   * Maps frontend field names to database column names
+   * @param id - Inventory item ID to update
+   * @param updates - Partial object with fields to update
+   * @throws Error if update fails
+   */
   async updateInventoryItem(
     id: string,
     updates: Partial<{
@@ -1069,6 +1228,7 @@ export const api = {
       costPerUnit: number;
     }>
   ): Promise<void> {
+    // Build update object, only including provided fields
     const updateData: any = {};
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.sku !== undefined) updateData.sku = updates.sku;
@@ -1085,6 +1245,12 @@ export const api = {
     if (error) throw new Error(`Failed to update inventory item: ${error.message}`);
   },
 
+  /**
+   * Fetches all employees (users with non-customer roles)
+   * Includes role information via database join
+   * @returns Array of employees sorted by creation date (newest first)
+   * @throws Error if query fails
+   */
   async getEmployees(): Promise<Employee[]> {
     const { data, error } = await supabase
       .from('users')
@@ -1103,16 +1269,25 @@ export const api = {
     }));
   },
 
+  /**
+   * Updates an employee's information
+   * Handles role updates by looking up role_id from role name
+   * Maps frontend field names to database column names
+   * @param id - Employee user ID to update
+   * @param updates - Partial object with fields to update
+   * @throws Error if update fails or role is invalid
+   */
   async updateEmployee(
     id: string,
     updates: Partial<{ username: string; fullName: string; email: string; role: string }>
   ): Promise<void> {
+    // Build update object, only including provided fields
     const updateData: any = {};
     if (updates.username !== undefined) updateData.username = updates.username;
     if (updates.fullName !== undefined) updateData.full_name = updates.fullName;
     if (updates.email !== undefined) updateData.email = updates.email;
 
-    // Handle role update
+    // Handle role update - need to convert role name to role_id
     if (updates.role !== undefined) {
       const { data: roleData, error: roleError } = await supabase
         .from('roles')
@@ -1135,6 +1310,14 @@ export const api = {
     if (error) throw new Error(`Failed to update employee: ${error.message}`);
   },
 
+  /**
+   * Generates sales reports grouped by date
+   * Aggregates completed orders by date with totals, counts, and averages
+   * @param startDate - Optional start date filter (ISO string)
+   * @param endDate - Optional end date filter (ISO string)
+   * @returns Array of daily sales reports sorted by date (most recent first)
+   * @throws Error if query fails
+   */
   async getSalesReports(startDate?: string, endDate?: string): Promise<SalesReport[]> {
     let query = supabase
       .from('orders')
@@ -1174,12 +1357,21 @@ export const api = {
       .sort((a, b) => b.date.localeCompare(a.date));
   },
 
+  /**
+   * Generates comprehensive sales analytics data
+   * Calculates daily sales, top-selling items, and category sales
+   * Used for manager dashboard and reporting
+   * @param days - Number of days to look back (default: 30)
+   * @returns Sales data with daily trends, top items, and category breakdowns
+   * @throws Error if query fails
+   */
   async getSalesData(days: number = 30): Promise<SalesData> {
+    // Calculate start date based on days parameter
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     const startDateStr = startDate.toISOString().split('T')[0];
 
-    // Get completed orders with items
+    // Get completed orders with nested order items and menu item details
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
       .select(`
@@ -1200,10 +1392,10 @@ export const api = {
 
     if (ordersError) throw new Error(`Failed to fetch sales data: ${ordersError.message}`);
 
-    // Process data
-    const dailySalesMap = new Map<string, number>();
-    const itemMap = new Map<string, { quantity: number; revenue: number }>();
-    const categoryMap = new Map<string, number>();
+    // Process data into maps for efficient aggregation
+    const dailySalesMap = new Map<string, number>(); // Date -> total sales
+    const itemMap = new Map<string, { quantity: number; revenue: number }>(); // Item name -> aggregated data
+    const categoryMap = new Map<string, number>(); // Category -> total revenue
 
     (orders || []).forEach((order: any) => {
       const date = order.order_time.split('T')[0];
@@ -1230,7 +1422,7 @@ export const api = {
       });
     });
 
-    // Convert to arrays and sort
+    // Convert maps to arrays and sort for final output
     const dailySales = Array.from(dailySalesMap.entries())
       .map(([date, sales]) => ({ date, sales }))
       .sort((a, b) => a.date.localeCompare(b.date));

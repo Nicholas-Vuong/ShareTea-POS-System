@@ -1,7 +1,19 @@
+/**
+ * Accessibility settings store
+ * Manages user preferences for accessibility features:
+ * - High contrast mode
+ * - Text scaling (100%, 125%, 150%)
+ * - Language selection for translations
+ * 
+ * Uses Zustand with persistence to save settings across sessions
+ */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LanguageCode } from '@/lib/translate';
 
+/**
+ * State interface for accessibility settings
+ */
 interface AccessibilityState {
   highContrast: boolean;
   textScale: 100 | 125 | 150;
