@@ -34,15 +34,27 @@ export function NutritionInfoPanel({ menuItemId, menuItemName, customization }: 
 
     if (isError) {
       return (
-        <div className="space-y-2 text-sm">
-          <p className="text-destructive font-semibold flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            Nutrition information could not be loaded. Please try again later.
-          </p>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="flex-1 space-y-2">
+              <p className="text-destructive font-semibold">
+                Unable to load nutrition information
+              </p>
+              <p className="text-muted-foreground text-xs">
+                {error?.message?.includes('network') || error?.message?.includes('fetch')
+                  ? 'Connection problem. Please check your internet connection.'
+                  : error?.message?.includes('404') || error?.message?.includes('Not Found')
+                  ? 'Nutrition data is not available for this item.'
+                  : 'The nutrition information service is temporarily unavailable.'}
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => refetch()}
-            className="underline text-primary font-semibold"
+            className="w-full rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors touch-target"
+            aria-label="Retry loading nutrition information"
           >
             Try again
           </button>
