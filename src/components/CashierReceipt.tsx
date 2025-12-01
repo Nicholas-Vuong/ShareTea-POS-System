@@ -91,7 +91,10 @@ export const CashierReceipt = ({
                     <span className="font-semibold">${item.subtotal.toFixed(2)}</span>
                   </div>
                   <div className="text-sm text-muted-foreground pl-4">
-                    <div>{item.options.size} • {item.options.sugar}% sugar • {item.options.ice}</div>
+                    <div>
+                      {item.options.size} • {item.options.sugar}% sugar • {item.options.ice}
+                      {item.options.temperature && ` • ${item.options.temperature}`}
+                    </div>
                     {item.options.toppings.length > 0 && (
                       <div>+ {item.options.toppings.join(', ')}</div>
                     )}
