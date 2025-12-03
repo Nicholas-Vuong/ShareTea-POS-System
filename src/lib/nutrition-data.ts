@@ -71,7 +71,14 @@ export type IngredientId =
   | 'peach_ice_blend'
   | 'coconut_water'
   | 'yogurt_base'
-  | 'dragonfruit_puree';
+  | 'dragonfruit_puree'
+  | 'pumpkin_spice_syrup'
+  | 'cinnamon_gingerbread_syrup'
+  | 'peppermint_syrup'
+  | 'chocolate_syrup'
+  | 'marshmallow_syrup'
+  | 'vanilla_almond_syrup'
+  | 'graham_cracker_crumble';
 
 export const INGREDIENTS: Record<IngredientId, IngredientDefinition> = {
   black_tea: {
@@ -409,6 +416,50 @@ export const INGREDIENTS: Record<IngredientId, IngredientDefinition> = {
     label: 'Dragonfruit purée',
     unit: 'oz',
     macrosPerUnit: { calories: 18, carbs: 4, sugar: 3, fat: 0.2, protein: 0.3 },
+  },
+  pumpkin_spice_syrup: {
+    id: 'pumpkin_spice_syrup',
+    label: 'Pumpkin spice syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 28, carbs: 7, sugar: 6.5, fat: 0.1, protein: 0 },
+  },
+  cinnamon_gingerbread_syrup: {
+    id: 'cinnamon_gingerbread_syrup',
+    label: 'Cinnamon gingerbread syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 26, carbs: 6.5, sugar: 6, fat: 0.1, protein: 0 },
+  },
+  peppermint_syrup: {
+    id: 'peppermint_syrup',
+    label: 'Peppermint syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 24, carbs: 6, sugar: 6, fat: 0, protein: 0 },
+  },
+  chocolate_syrup: {
+    id: 'chocolate_syrup',
+    label: 'Chocolate syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 35, carbs: 8, sugar: 7, fat: 0.5, protein: 0.5 },
+  },
+  marshmallow_syrup: {
+    id: 'marshmallow_syrup',
+    label: 'Marshmallow syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 32, carbs: 8, sugar: 7.5, fat: 0, protein: 0 },
+  },
+  vanilla_almond_syrup: {
+    id: 'vanilla_almond_syrup',
+    label: 'Vanilla almond syrup (per pump)',
+    unit: 'pump',
+    macrosPerUnit: { calories: 27, carbs: 6.5, sugar: 6.5, fat: 0.1, protein: 0 },
+    allergenNotes: ['tree nut'],
+  },
+  graham_cracker_crumble: {
+    id: 'graham_cracker_crumble',
+    label: 'Graham cracker crumble',
+    unit: 'scoop',
+    macrosPerUnit: { calories: 55, carbs: 9, sugar: 4, fat: 1.5, protein: 1 },
+    allergenNotes: ['gluten'],
   },
 };
 
@@ -1036,6 +1087,79 @@ const RECIPE_CONFIGS: RecipeConfig[] = [
     ],
     sweeteners: [sweetener('cane_syrup', 1.7)],
     tags: ['contains tree nut'],
+  },
+  {
+    menuItemId: 40,
+    name: 'Pumpkin Spice Latte',
+    category: 'Seasonal',
+    description: 'Warm espresso blended with pumpkin, cinnamon, nutmeg, and clove spices, topped with steamed milk and whipped cream. A cozy autumn favorite.',
+    components: [
+      component('espresso_shot', 2),
+      component('fresh_milk', 10),
+      component('cream_foam', 1.5, { scalesWithSize: false }),
+    ],
+    sweeteners: [sweetener('pumpkin_spice_syrup', 3.5)],
+    notes: 'Cream foam stays constant while base scales with size.',
+    tags: ['contains dairy', 'contains caffeine'],
+  },
+  {
+    menuItemId: 41,
+    name: 'Cinnamon Gingerbread Tea',
+    category: 'Seasonal',
+    description: 'Aromatic black tea infused with warm cinnamon and gingerbread spices, perfect for the holiday season. Served hot with a hint of sweetness.',
+    components: [
+      component('black_tea', 14),
+      component('fresh_milk', 4),
+    ],
+    sweeteners: [sweetener('cinnamon_gingerbread_syrup', 3)],
+    tags: ['contains dairy', 'contains caffeine'],
+  },
+  {
+    menuItemId: 42,
+    name: 'Peppermint Hot Chocolate',
+    category: 'Seasonal',
+    description: 'Rich and creamy hot chocolate with refreshing peppermint flavor, topped with whipped cream and crushed candy canes. A winter classic.',
+    components: [
+      component('fresh_milk', 10),
+      component('cream_foam', 1.5, { scalesWithSize: false }),
+    ],
+    sweeteners: [
+      sweetener('chocolate_syrup', 4),
+      sweetener('peppermint_syrup', 2.5),
+    ],
+    notes: 'Chocolate and peppermint syrups are measured in pumps, cream foam stays constant.',
+    tags: ['contains dairy'],
+  },
+  {
+    menuItemId: 43,
+    name: 'Sugar Cookie Latte',
+    category: 'Seasonal',
+    description: 'Espresso combined with vanilla and almond flavors reminiscent of freshly baked sugar cookies, finished with steamed milk and a sprinkle of sugar.',
+    components: [
+      component('espresso_shot', 2),
+      component('fresh_milk', 10),
+      component('cream_foam', 1, { scalesWithSize: false }),
+    ],
+    sweeteners: [sweetener('vanilla_almond_syrup', 3.2)],
+    tags: ['contains dairy', 'contains caffeine', 'contains tree nut'],
+  },
+  {
+    menuItemId: 44,
+    name: 'Smores Blended Smoothie',
+    category: 'Seasonal',
+    description: 'A decadent frozen blend of chocolate, marshmallow, and graham cracker flavors, topped with whipped cream and chocolate drizzle. Like a campfire treat in a cup.',
+    components: [
+      component('smoothie_base', 8),
+      component('graham_cracker_crumble', 1.5),
+      component('cream_foam', 1, { scalesWithSize: false }),
+    ],
+    sweeteners: [
+      sweetener('chocolate_syrup', 3),
+      sweetener('marshmallow_syrup', 2),
+      sweetener('cane_syrup', 1.5),
+    ],
+    notes: 'Chocolate and marshmallow syrups are measured in pumps. Cream foam and graham cracker crumble stay constant while base scales.',
+    tags: ['contains dairy', 'contains gluten'],
   },
 ];
 
