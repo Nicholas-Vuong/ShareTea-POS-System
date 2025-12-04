@@ -24,6 +24,7 @@ import {
 import { Search, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
+import { calculateItemPrice } from '@/lib/pricing';
 
 /**
  * Cashier POS Page
@@ -76,6 +77,7 @@ export default function Cashier() {
   const [editContext, setEditContext] = useState<{ index: number; item: CartItem; returnView: View } | null>(null);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const pendingNavigation = useRef<(() => void) | null>(null);
+  const previousViewRef = useRef<View>('menu'); // Track previous view for navigation
   const editingInitialOptions = editContext?.item.options;
   const editingInitialQuantity = editContext?.item.quantity ?? 1;
   const isEditingItem = Boolean(editContext);
@@ -163,13 +165,16 @@ export default function Cashier() {
    * @param options - Customization options (size, sugar, ice, toppings)
    */
   const handleAddToCart = (item: MenuItem, quantity: number, options: CartItemOptions) => {
+    // Calculate price with customization modifiers
+    const itemPrice = calculateItemPrice(item.price, options.size, options.sugar, options.toppings);
+    
     const cartItemPayload = {
       menuItemId: item.id,
       name: item.name,
       quantity,
       options,
-      price: item.price,
-      subtotal: item.price * quantity,
+      price: itemPrice,
+      subtotal: itemPrice * quantity,
     };
 
     if (isEditingItem && editContext) {
@@ -193,10 +198,12 @@ export default function Cashier() {
   };
 
   const handleCartCheckout = () => {
+    previousViewRef.current = view; // Remember we're coming from menu
     requestNavigationConfirmation(() => setView('cartReview'));
   };
 
   const handleProceedToCheckout = () => {
+    previousViewRef.current = view; // Remember we're coming from cartReview
     setView('checkout');
   };
 
@@ -221,14 +228,22 @@ export default function Cashier() {
       return;
     }
 
+    // Determine return view: if on cartReview but came from checkout, return to checkout
+    // Otherwise return to current view
+    let returnView: View = view;
+    if (view === 'cartReview' && previousViewRef.current === 'checkout') {
+      returnView = 'checkout';
+    }
+
     // Set up edit context with current item data
     setSelectedCategory(menuItem.category);
     setSelectedItem(menuItem);
     setEditContext({
       index,
       item: cartItem,
-      returnView: 'cartReview', // Return to cart review after editing
+      returnView: returnView,
     });
+    previousViewRef.current = view; // Remember where we're editing from
     setView('menu'); // Switch to menu view to show customizer
   };
 
@@ -378,7 +393,10 @@ export default function Cashier() {
           </Button>
         </header>
         <CashierCheckout
-          onBack={() => setView('cartReview')}
+          onBack={() => {
+            previousViewRef.current = view; // Remember we're coming from checkout
+            setView('cartReview');
+          }}
           onComplete={handleCompleteOrder}
         />
         {cancelDialog}
@@ -425,7 +443,7 @@ export default function Cashier() {
 
       <div className="flex-1 flex overflow-hidden">
         <div className="w-96 border-r p-6 bg-muted/30 flex-shrink-0 overflow-y-auto">
-          <CartPanel onCheckout={handleCartCheckout} />
+          <CartPanel onCheckout={handleCartCheckout} onEditItem={handleEditCartItem} />
         </div>
 
         <div className="flex-1 flex flex-col p-6 min-w-0 overflow-hidden">
@@ -455,18 +473,19 @@ export default function Cashier() {
             {selectedItem ? (
               <div className="h-full overflow-y-auto">
                 <div className="min-h-full">
-                  <ItemCustomizer
-                    menuItemId={selectedItem.id}
-                    itemName={selectedItem.name}
-                    itemPrice={selectedItem.price}
-                    initialOptions={editingInitialOptions}
-                    initialQuantity={editingInitialQuantity}
-                    mode={isEditingItem ? 'edit' : 'add'}
-                    onAddToCart={(quantity, options) =>
-                      handleAddToCart(selectedItem, quantity, options)
-                    }
-                    onCancel={handleExitCustomizer}
-                  />
+                    <ItemCustomizer
+                        menuItemId={selectedItem.id}
+                        itemName={selectedItem.name}
+                        itemPrice={selectedItem.price}
+                        temperatureOptions={selectedItem.temperatureOptions}
+                        initialOptions={editingInitialOptions}
+                        initialQuantity={editingInitialQuantity}
+                        mode={isEditingItem ? 'edit' : 'add'}
+                        onAddToCart={(quantity, options) =>
+                            handleAddToCart(selectedItem, quantity, options)
+                        }
+                        onCancel={handleExitCustomizer}
+                    />
                 </div>
               </div>
             ) : (
