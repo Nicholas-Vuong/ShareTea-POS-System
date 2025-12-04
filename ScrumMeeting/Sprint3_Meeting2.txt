@@ -1,0 +1,55 @@
+SCRUM Meeting 2 - Agenda & Minutes
+Meeting Date: Thursday, 12/4
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+All Sprint 3 items were assigned with infra-first sequencing. Accessibility tasks were scheduled mid-sprint to allow retesting for Maria, Vishnu, and Carol.
+
+Agenda Items:
+- Review Sprint 3 progress
+- Confirm infra + accessibility completion status
+- Identify blockers for final week
+- Prioritize integration + QA
+- Reassign remaining work if needed
+
+Status Update:
+Accomplishments:
+- Monitoring alerts + backup workflow completed
+- Custom domain + SSL verified in prod
+- OTP messaging pipeline implemented
+- OAuth2 login integrated and stable
+- Guest ordering, points, and automated emails completed
+- Seasonal timing rules live
+- Accessibility: resizable text, focus indicators, contrast, screen reader labels, keyboard nav
+- Persona flow tests (Carol, Vishnu, Maria) completed
+
+Tasks Completed:
+Monitoring Alerts - sudeep.pasula - yes
+Backup Strategy - hrudithl - yes
+Domain + SSL - jhanghirbabar - yes
+PostgreSQL RDS Config - hrudithl - yes
+OAuth2 Login Setup - hrudithl - yes
+Points System - hrudithl - yes
+Guest Ordering - rahulgonsalves - yes
+OTP Using Messages - jhanghirbabar - yes
+Automated Mass Emails - sudeep.pasula - yes
+Timed Seasonal Items - nicholas_vuong - yes
+Usability Feedback - sudeep.pasula - yes
+Accessibility Audit - rahulgonsalves - yes
+Carol Flow Test - nicholas_vuong - yes
+Vishnu Flow Test - nicholas_vuong - yes
+Resizable Text - rahulsaravanakumar - yes
+Focus Indicators - rahulsaravanakumar - yes
+Color Contrast Fixes - rahulgonsalves - yes
+Screen Reader Labels - rahulsaravanakumar - yes
+Keyboard Nav - rahulsaravanakumar - yes
+
+Next Steps:
+Run end-to-end cashier → kitchen → manager test; re-test accessibility with zoom; finalize Sprint 3 docs; plan demo; validate error handling.
+
+Assignments:
+Final Regression Pass - entire_team
+Accessibility Retesting - rahulsaravanakumar, nicholas_vuong
+Deployment Verification - jhanghirbabar
+Presentation Planning - entire_team
+Demo Script Finalization - rahulgonsalves, jhanghirbabar
