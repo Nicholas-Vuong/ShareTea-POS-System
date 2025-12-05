@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
 import Cashier from "./pages/Cashier";
 import Kiosk from "./pages/Kiosk";
 import Kitchen from "./pages/Kitchen";
@@ -25,6 +26,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route
             path="/cashier"
             element={
@@ -33,14 +35,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/kiosk"
-            element={
-              <ProtectedRoute allowedRoles={['customer']} allowManagerOverride>
-                <Kiosk />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/kiosk" element={<Kiosk />} />
           <Route
             path="/customer"
             element={
