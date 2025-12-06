@@ -69,10 +69,15 @@ export async function createOrder ({ userId, items, notes }) {
 }
 
 export async function listOrders ({ role, userId }) {
+  // Normalize role to make comparisons case-insensitive and add a defensive
+  // fallback so customers (or unknown roles) never see other customers' orders.
+  const normalizedRole = (role ?? '').toLowerCase()
+  const isStaff = normalizedRole === 'manager' || normalizedRole === 'cashier'
+
   const params = []
   let whereClause = ''
 
-  if (role === 'Customer') {
+  if (!isStaff) {
     params.push(userId)
     whereClause = 'WHERE o.user_id = $1'
   }
