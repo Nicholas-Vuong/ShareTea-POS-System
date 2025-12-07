@@ -1,0 +1,38 @@
+SCRUM Meeting 3 - Agenda & Minutes
+Meeting Date: Sunday, 12/7
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+We confirmed infra completion, accessibility features, and demo plan. Team aligned on final regression and documentation tasks.
+
+Agenda Items:
+- Review final completion status
+- Confirm demo + presentation readiness
+- Validate deployment stability
+- Complete Sprint 3 retrospective
+- Assign remaining polish + submission tasks
+
+Status Update:
+Accomplishments:
+- Final regression testing passed
+- Accessibility stable at high zoom levels
+- Deployment re-verified, no perf issues
+- Presentation slide draft completed
+- Demo script completed and reviewed
+- Sprint 3 retrospective draft finalized
+
+Tasks Completed:
+Monitoring/Backup Docs - sudeep.pasula / hrudithl - yes
+Persona Test Notes - nicholas_vuong - yes
+Usability Feedback Summary - sudeep.pasula - yes
+Domain + SSL Checklist - jhanghirbabar - yes
+RDS Config Review - hrudithl - yes
+Sprint Retrospective - team - yes
+
+Next Steps:
+Polish deliverables, final formatting, compile artifacts, and complete submission.
+
+Assignments:
+Final Proofreading - team
+Submission Packaging - team
+Sprint 3 Retrospective - team
