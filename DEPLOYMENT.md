@@ -116,14 +116,62 @@ If you need environment variables:
 1. Create a `.env` file locally:
 ```
 VITE_API_URL=https://api.example.com
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_APP_URL=http://localhost:5173  # For local development
 ```
 
 2. In Vercel Dashboard:
    - Go to your project settings
    - Navigate to "Environment Variables"
-   - Add your variables
+   - Add your variables:
+     - `VITE_SUPABASE_URL` - Your Supabase project URL
+     - `VITE_SUPABASE_ANON_KEY` - Your Supabase anonymous key
+     - `VITE_APP_URL` - Your production URL (e.g., `https://your-app.vercel.app`)
 
 Note: Vite requires environment variables to be prefixed with `VITE_`
+
+## OAuth Configuration (Google Sign-In)
+
+### 1. Supabase Dashboard Configuration
+
+To enable Google OAuth, you need to configure the redirect URL in your Supabase dashboard:
+
+1. Go to your [Supabase Dashboard](https://app.supabase.com)
+2. Navigate to **Authentication** → **URL Configuration**
+3. Add your production URL to the **Redirect URLs** list:
+   - Production: `https://your-app.vercel.app/auth/callback`
+   - Local development: `http://localhost:5173/auth/callback` (if needed)
+4. Save the changes
+
+### 2. Google OAuth Setup
+
+1. In Supabase Dashboard, go to **Authentication** → **Providers**
+2. Enable **Google** provider
+3. Add your Google OAuth credentials:
+   - Client ID
+   - Client Secret
+4. Configure the authorized redirect URIs in Google Cloud Console:
+   - Add: `https://[your-project-ref].supabase.co/auth/v1/callback`
+   - This is your Supabase project's OAuth callback URL
+
+### 3. Vercel Environment Variables
+
+Make sure you have set the `VITE_APP_URL` environment variable in Vercel:
+- Go to your Vercel project settings
+- Navigate to **Environment Variables**
+- Add: `VITE_APP_URL` = `https://your-app.vercel.app` (your actual Vercel deployment URL)
+
+### Troubleshooting OAuth Issues
+
+**Problem**: Redirected to `localhost:3000` or wrong URL after OAuth sign-in
+
+**Solutions**:
+1. Verify `VITE_APP_URL` is set correctly in Vercel (should be your production URL)
+2. Check Supabase dashboard → Authentication → URL Configuration has your production callback URL
+3. Ensure the redirect URL format is: `https://your-app.vercel.app/auth/callback`
+4. Clear browser cache and try again
+5. Check browser console for any errors
 
 ## Custom Domain
 

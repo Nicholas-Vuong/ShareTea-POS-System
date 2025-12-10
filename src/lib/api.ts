@@ -1374,11 +1374,17 @@ export const api = {
       throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
     }
     
+    // Use environment variable for production URL, fallback to window.location.origin
+    // This ensures the correct redirect URL is used in production
+    const redirectUrl = import.meta.env.VITE_APP_URL 
+      ? `${import.meta.env.VITE_APP_URL}/auth/callback`
+      : `${window.location.origin}/auth/callback`;
+    
     try {
       const { error } = await supabaseAuth.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: redirectUrl,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -1414,10 +1420,31 @@ export const api = {
       throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
     }
     
+    // Check if there's a code parameter in the URL (OAuth callback)
+    // Supabase PKCE flow should handle this automatically, but we check for it
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const error = urlParams.get('error');
+    
+    if (error) {
+      throw new Error(`OAuth error: ${error}. Please try logging in again.`);
+    }
+    
+    // If there's a code parameter, Supabase should automatically exchange it
+    // But we need to wait a moment for the session to be established
+    if (code) {
+      // Wait a bit for Supabase to process the code exchange
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     // Get the session from Supabase Auth
     const { data: { session }, error: sessionError } = await supabaseAuth.auth.getSession();
     
     if (sessionError || !session) {
+      // If we have a code but no session, the redirect URL might be misconfigured
+      if (code) {
+        throw new Error('OAuth callback received but session not established. Please ensure the redirect URL is correctly configured in Supabase dashboard and matches your production URL.');
+      }
       throw new Error('No active session found. Please try logging in again.');
     }
 
