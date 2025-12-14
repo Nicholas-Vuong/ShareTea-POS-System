@@ -518,8 +518,41 @@ export const api = {
     };
 
     // Add customer_id if provided
+    // Note: customerId might be a user_id from users table, so we need to find the corresponding customer_id
     if (order.customerId) {
-      orderInsert.customer_id = parseInt(order.customerId);
+      const userIdNum = parseInt(order.customerId);
+      if (!isNaN(userIdNum)) {
+        // Get user's email to find their customer_id
+        const { data: user, error: userError } = await supabase
+          .from('users')
+          .select('email')
+          .eq('user_id', userIdNum)
+          .single();
+
+        if (!userError && user?.email) {
+          // Find customer by email
+          const { data: customer, error: customerError } = await supabase
+            .from('customers')
+            .select('customer_id')
+            .eq('email', user.email.trim().toLowerCase())
+            .maybeSingle();
+
+          if (!customerError && customer) {
+            orderInsert.customer_id = customer.customer_id;
+          } else {
+            // Customer doesn't exist, create one
+            try {
+              const customerId = await this.getOrCreateCustomerFromUser(order.customerId, user.email);
+              if (customerId) {
+                orderInsert.customer_id = customerId;
+              }
+            } catch (error) {
+              console.warn('Failed to create customer record:', error);
+              // Continue without customer_id if creation fails
+            }
+          }
+        }
+      }
     }
 
     // Try to insert with source first, if it fails, retry without it
@@ -821,10 +854,81 @@ export const api = {
   },
 
   /**
+   * Gets or creates a customer record from a user ID
+   * Maps users table to customers table by email
+   * @param userId - User ID from users table
+   * @param email - User email address
+   * @returns Customer ID from customers table
+   * @throws Error if customer lookup/creation fails
+   */
+  async getOrCreateCustomerFromUser(userId: string, email?: string): Promise<number | null> {
+    if (!email) {
+      // If no email, try to get it from the user record
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('email')
+        .eq('user_id', parseInt(userId))
+        .single();
+      
+      if (userError || !user?.email) {
+        return null; // Can't create customer without email
+      }
+      email = user.email;
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+
+    // First, try to find existing customer by email
+    const { data: existingCustomer, error: customerError } = await supabase
+      .from('customers')
+      .select('customer_id')
+      .eq('email', trimmedEmail)
+      .maybeSingle();
+
+    if (existingCustomer && !customerError) {
+      return existingCustomer.customer_id;
+    }
+
+    // Customer doesn't exist, create new one
+    // Get user's full name if available
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('full_name, email')
+      .eq('user_id', parseInt(userId))
+      .single();
+
+    if (userError || !user) {
+      throw new Error(`Failed to find user: ${userError?.message || 'Unknown error'}`);
+    }
+
+    const fullName = user.full_name || trimmedEmail.split('@')[0];
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Create new customer record
+    const { data: newCustomer, error: createError } = await supabase
+      .from('customers')
+      .insert({
+        email: trimmedEmail,
+        first_name: firstName,
+        last_name: lastName,
+      })
+      .select('customer_id')
+      .single();
+
+    if (createError || !newCustomer) {
+      throw new Error(`Failed to create customer: ${createError?.message || 'Unknown error'}`);
+    }
+
+    return newCustomer.customer_id;
+  },
+
+  /**
    * Fetches all orders for a specific customer
    * Includes error handling for individual order mapping failures
    * Returns orders sorted by most recent first
-   * @param userId - Customer user ID
+   * @param userId - Customer user ID from users table
    * @returns Array of customer orders with full item details
    * @throws Error if user ID is invalid or query fails
    */
@@ -836,10 +940,37 @@ export const api = {
         throw new Error(`Invalid user ID: ${userId}`);
       }
 
+      // Get user's email to find their customer_id
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('email')
+        .eq('user_id', userIdNum)
+        .single();
+
+      if (userError || !user?.email) {
+        console.warn('User not found or has no email, returning empty orders');
+        return [];
+      }
+
+      // Find customer by email
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .select('customer_id')
+        .eq('email', user.email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (customerError || !customer) {
+        console.warn('Customer not found for user, returning empty orders');
+        return [];
+      }
+
+      const customerId = customer.customer_id;
+
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select(`
           order_id,
+          customer_id,
           status,
           order_time,
           total,
@@ -852,7 +983,8 @@ export const api = {
             )
           )
         `)
-        .eq('customer_id', userIdNum)
+        .eq('customer_id', customerId)
+        .not('customer_id', 'is', null)
         .order('order_time', { ascending: false });
 
       if (ordersError) {
@@ -865,8 +997,16 @@ export const api = {
         return [];
       }
 
+      // Defensive filter: Ensure we only return orders that belong to this customer
+      // This is an extra safety measure in case the query filter doesn't work as expected
+      const filteredOrders = (orders || []).filter((order: any) => {
+        const orderCustomerId = order.customer_id;
+        // Only include orders where customer_id matches and is not null
+        return orderCustomerId !== null && orderCustomerId !== undefined && orderCustomerId === customerId;
+      });
+
       // Map orders and handle any issues with individual orders
-      const mappedOrders = (orders || []).map((order: any) => {
+      const mappedOrders = filteredOrders.map((order: any) => {
         try {
           return {
             orderId: order.order_id?.toString() || 'unknown',
@@ -1090,6 +1230,37 @@ export const api = {
     const cutoffTime = new Date(now.getTime() - timeWindowMinutes * 60 * 1000);
     const cutoffTimeStr = cutoffTime.toISOString();
 
+    const userIdNum = parseInt(userId);
+    if (isNaN(userIdNum)) {
+      throw new Error(`Invalid user ID: ${userId}`);
+    }
+
+    // Get user's email to find their customer_id
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('email')
+      .eq('user_id', userIdNum)
+      .single();
+
+    if (userError || !user?.email) {
+      console.warn('User not found or has no email, returning empty orders');
+      return [];
+    }
+
+    // Find customer by email
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('customer_id')
+      .eq('email', user.email.trim().toLowerCase())
+      .maybeSingle();
+
+    if (customerError || !customer) {
+      console.warn('Customer not found for user, returning empty orders');
+      return [];
+    }
+
+    const customerId = customer.customer_id;
+
     // Fetch orders in progress (PLACED, PREPARING, READY) or recently completed
     // Use separate queries and combine results for better database compatibility
     const [inProgressResult, recentCompletedResult] = await Promise.all([
@@ -1097,6 +1268,7 @@ export const api = {
         .from('orders')
         .select(`
           order_id,
+          customer_id,
           status,
           order_time,
           order_items (
@@ -1108,12 +1280,14 @@ export const api = {
             )
           )
         `)
-        .eq('customer_id', parseInt(userId))
+        .eq('customer_id', customerId)
+        .not('customer_id', 'is', null)
         .in('status', ['PLACED', 'PREPARING', 'READY']),
       supabase
         .from('orders')
         .select(`
           order_id,
+          customer_id,
           status,
           order_time,
           order_items (
@@ -1125,7 +1299,8 @@ export const api = {
             )
           )
         `)
-        .eq('customer_id', parseInt(userId))
+        .eq('customer_id', customerId)
+        .not('customer_id', 'is', null)
         .eq('status', 'COMPLETED')
         .gte('order_time', cutoffTimeStr),
     ]);
@@ -1135,12 +1310,20 @@ export const api = {
 
     const allOrders = [...(inProgressResult.data || []), ...(recentCompletedResult.data || [])];
     
+    // Defensive filter: Ensure we only return orders that belong to this customer
+    // This is an extra safety measure in case the query filter doesn't work as expected
+    const filteredOrders = allOrders.filter((order: any) => {
+      const orderCustomerId = order.customer_id;
+      // Only include orders where customer_id matches and is not null
+      return orderCustomerId !== null && orderCustomerId !== undefined && orderCustomerId === customerId;
+    });
+    
     // Sort by order_time descending (most recent first)
-    allOrders.sort((a: any, b: any) => 
+    filteredOrders.sort((a: any, b: any) => 
       new Date(b.order_time).getTime() - new Date(a.order_time).getTime()
     );
 
-    return allOrders.map((order: any) => ({
+    return filteredOrders.map((order: any) => ({
       orderId: order.order_id.toString(),
       status: order.status as Order['status'],
       createdAt: order.order_time,

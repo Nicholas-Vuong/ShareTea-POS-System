@@ -39,7 +39,7 @@ export const AccessibilityToolbar = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 rounded-lg bg-card p-2 shadow-lg border border-border transition-all duration-300 accessibility-toolbar max-w-fit">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 rounded-lg bg-card p-2 shadow-lg border border-border transition-all duration-300 accessibility-toolbar">
       <Button
         variant="ghost"
         size="icon"

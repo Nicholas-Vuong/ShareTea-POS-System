@@ -102,39 +102,20 @@ All colors MUST be HSL.
   }
 
   .high-contrast {
-    /* High contrast mode with better contrast but still usable */
     --background: 0 0% 100%;
     --foreground: 0 0% 0%;
-    --primary: 0 0% 0%;
+    --primary: 210 100% 35%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 20%;
     --secondary-foreground: 0 0% 100%;
     --muted: 0 0% 95%;
     --muted-foreground: 0 0% 10%;
-    --accent: 0 0% 0%;
+    --accent: 330 100% 40%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 100% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 120 100% 25%;
-    --success-foreground: 0 0% 100%;
-    --warning: 45 100% 50%;
-    --warning-foreground: 0 0% 0%;
-    --border: 0 0% 0%;
-    --input: 0 0% 100%;
-    --input-foreground: 0 0% 0%;
-    --ring: 0 0% 0%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 0%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 0%;
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 0 0% 0%;
-    --sidebar-primary: 0 0% 0%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 90%;
-    --sidebar-accent-foreground: 0 0% 0%;
-    --sidebar-border: 0 0% 0%;
-    --sidebar-ring: 0 0% 0%;
   }
 }
 
@@ -147,28 +128,25 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 
-  /* High contrast mode: slightly thicker fonts and borders for better visibility */
-  .high-contrast h1,
-  .high-contrast h2,
-  .high-contrast h3,
-  .high-contrast h4,
-  .high-contrast h5,
-  .high-contrast h6 {
-    font-weight: 700;
+  /* Section headings - keep words together, don't break words */
+  .section-heading {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: keep-all;
   }
 
-  .high-contrast button,
-  .high-contrast [role="button"] {
-    font-weight: 600;
-    border-width: 2px;
-  }
-
-  .high-contrast .border {
-    border-width: 2px;
-  }
-
-  .high-contrast img {
-    filter: grayscale(100%) contrast(150%);
+  /* Category headings - keep words together, allow wrapping between words only */
+  .category-heading {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    white-space: normal;
+    hyphens: none;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-align: center;
   }
 
   .text-lg-accessible {
@@ -185,95 +163,6 @@ All colors MUST be HSL.
 
   .focus-visible-strong {
     @apply focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring focus-visible:ring-offset-2;
-  }
-
-  /* Text scaling: ensure containers scale and text wraps properly */
-  .high-contrast [class*="container"],
-  .high-contrast [class*="max-w"] {
-    max-width: 100% !important;
-  }
-
-  /* Ensure text wraps and doesn't overflow, but keep words together in headings */
-  * {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    hyphens: auto;
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    word-break: keep-all;
-    overflow-wrap: break-word;
-  }
-
-  /* Scale containers with text size - ensure full width usage */
-  [data-text-scale="125"] .container,
-  [data-text-scale="150"] .container {
-    max-width: 100% !important;
-    width: 100% !important;
-  }
-
-  [data-text-scale="125"] [class*="max-w"],
-  [data-text-scale="150"] [class*="max-w"] {
-    max-width: 100% !important;
-  }
-
-  /* Ensure layout adjusts when text is scaled - move suggested items below */
-  [data-text-scale="125"] .main-content-layout,
-  [data-text-scale="150"] .main-content-layout {
-    flex-direction: column !important;
-  }
-
-  [data-text-scale="125"] .suggested-items-section,
-  [data-text-scale="150"] .suggested-items-section {
-    order: 3 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-top: 2rem;
-  }
-
-  /* Flexible category grid that adapts to content */
-  .category-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1.5rem;
-  }
-
-  @media (min-width: 640px) {
-    .category-grid {
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 2rem;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .category-grid {
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    }
-  }
-
-  /* Ensure all content scales properly without overlap */
-  [data-text-scale="125"] *,
-  [data-text-scale="150"] * {
-    box-sizing: border-box;
-  }
-
-  /* Keep accessibility toolbar properly formatted at all sizes */
-  .accessibility-toolbar {
-    position: fixed !important;
-    bottom: 1rem !important;
-    right: 1rem !important;
-    z-index: 50;
-    flex-wrap: nowrap;
-    white-space: nowrap;
-  }
-
-  [data-text-scale="125"] .accessibility-toolbar,
-  [data-text-scale="150"] .accessibility-toolbar {
-    position: fixed !important;
-    bottom: 1rem !important;
-    right: 1rem !important;
-    max-width: fit-content;
-    flex-wrap: wrap;
   }
 }
 
@@ -295,25 +184,122 @@ All colors MUST be HSL.
     display: none; /* Chrome, Safari, Opera */
   }
 
-  /* Prevent text overflow in scaled containers */
-  [data-text-scale] {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
+  /* Flexible category grid that adapts to available space */
+  .category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
   }
 
-  [data-text-scale] * {
-    max-width: 100%;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+  @media (min-width: 640px) {
+    .category-grid {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 2rem;
+    }
   }
 
-  /* Ensure containers use full width when text is scaled */
-  [data-text-scale="125"] .container,
-  [data-text-scale="150"] .container {
+  @media (min-width: 1024px) {
+    .category-grid {
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 2rem;
+    }
+  }
+
+  /* Default layout: categories on left, weather/suggested on right side by side */
+  .main-content-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* On large screens, show categories on left, suggested items on right */
+  @media (min-width: 1024px) {
+    :root:not([data-text-scale="125"]):not([data-text-scale="150"]) .main-content-layout {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+
+    :root:not([data-text-scale="125"]):not([data-text-scale="150"]) .categories-section {
+      flex: 1;
+      min-width: 0;
+      order: 1;
+    }
+
+    :root:not([data-text-scale="125"]):not([data-text-scale="150"]) .suggested-items-section {
+      flex: 0 0 auto;
+      min-width: 300px;
+      max-width: 400px;
+      order: 2;
+    }
+  }
+
+  /* When text is scaled, stack categories at top, suggested at bottom */
+  [data-text-scale="125"] .main-content-layout,
+  [data-text-scale="150"] .main-content-layout {
+    flex-direction: column !important;
+  }
+
+  [data-text-scale="125"] .categories-section,
+  [data-text-scale="150"] .categories-section {
+    order: 1 !important;
     width: 100% !important;
-    max-width: 100% !important;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  [data-text-scale="125"] .suggested-items-section,
+  [data-text-scale="150"] .suggested-items-section {
+    order: 2 !important;
+    width: 100% !important;
+  }
+
+  /* Ensure all 4 items show without scrolling - default vertical layout */
+  .suggested-items-section .space-y-3 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .suggested-items-section .space-y-3 > * {
+    flex-shrink: 0;
+  }
+
+  /* Make suggested items display in a 2x2 grid when horizontal (text scaled) */
+  [data-text-scale="125"] .suggested-items-section .space-y-3,
+  [data-text-scale="150"] .suggested-items-section .space-y-3 {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem !important;
+    grid-template-rows: repeat(2, auto);
+  }
+
+  /* Make weather section more compact when horizontal */
+  [data-text-scale="125"] .weather-section,
+  [data-text-scale="150"] .weather-section {
+    max-width: 320px;
+  }
+
+  [data-text-scale="125"] .weather-section .max-w-sm,
+  [data-text-scale="150"] .weather-section .max-w-sm {
+    max-width: 100%;
+  }
+
+  /* Accessibility toolbar - always fixed at bottom right */
+  .accessibility-toolbar {
+    position: fixed !important;
+    bottom: 1rem !important;
+    right: 1rem !important;
+    z-index: 50 !important;
+    max-width: fit-content;
+  }
+
+  /* Ensure toolbar doesn't break at different text scales */
+  [data-text-scale="125"] .accessibility-toolbar,
+  [data-text-scale="150"] .accessibility-toolbar {
+    position: fixed !important;
+    bottom: 1rem !important;
+    right: 1rem !important;
+    max-width: fit-content;
+    flex-wrap: wrap;
   }
 }

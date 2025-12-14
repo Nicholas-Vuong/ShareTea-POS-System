@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { MenuNutritionSummary } from '@/components/MenuNutritionSummary';
 import Reports from '@/components/Reports';
+import SalesVisualizations from '@/components/SalesVisualizations';
 import {
     Dialog,
     DialogContent,
@@ -301,6 +302,9 @@ export default function Manager() {
                         </TabsTrigger>
                         <TabsTrigger value="reports" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
                             Reports
+                        </TabsTrigger>
+                        <TabsTrigger value="visualizations" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+                            Sales Visualizations
                         </TabsTrigger>
                     </TabsList>
 
@@ -657,6 +661,11 @@ export default function Manager() {
                     {/* Reports Tab */}
                     <TabsContent value="reports" className="space-y-4">
                         <Reports />
+                    </TabsContent>
+
+                    {/* Sales Visualizations Tab */}
+                    <TabsContent value="visualizations" className="space-y-4">
+                        <SalesVisualizations />
                     </TabsContent>
                 </Tabs>
             </div>

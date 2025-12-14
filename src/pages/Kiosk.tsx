@@ -630,9 +630,15 @@ export default function Kiosk() {
                     </header>
 
                     <div className="container mx-auto px-6 py-12 flex-1 w-full max-w-full">
-                        <div className="text-center space-y-4 mb-12">
-                            <h1 className="text-5xl font-bold text-primary break-words">{t('welcome')}</h1>
-                            <p className="text-2xl text-muted-foreground break-words">{t('selectCategory')}</p>
+                        <div className="flex items-center justify-center gap-8 mb-12">
+                            {/* Weather widget inline with welcome text */}
+                            <div className="flex-shrink-0">
+                                <WeatherTile compact={true} />
+                            </div>
+                            <div className="text-center space-y-4 flex-1">
+                                <h1 className="text-5xl font-bold text-primary section-heading">{t('welcome')}</h1>
+                                <p className="text-2xl text-muted-foreground section-heading">{t('selectCategory')}</p>
+                            </div>
                         </div>
 
                         {/* Active Order Bar - shown above categories when order exists */}
@@ -669,35 +675,30 @@ export default function Kiosk() {
                         )}
 
                         <div className="flex flex-col lg:flex-row gap-8 items-start main-content-layout">
-                            {/* Left side: Weather section - limited size */}
-                            <div className="w-full lg:w-72 flex-shrink-0">
-                                <WeatherTile compact={false} />
-                            </div>
-
-                            {/* Middle: Categories - flexible grid that adapts */}
-                            <div className="flex-1 space-y-6 min-w-0 w-full">
+                            {/* Left side: Categories */}
+                            <div className="flex-1 space-y-6 min-w-0 order-1 categories-section">
                                 <div className="category-grid">
                                     {categories.map((category) => {
                                         const translatedCategory = translatedCategories.get(category) || category;
                                         return (
                                             <Card
                                                 key={category}
-                                                className="p-8 hover:shadow-xl transition-all cursor-pointer touch-target flex items-center justify-center min-h-[120px]"
+                                                className="p-10 hover:shadow-xl transition-all cursor-pointer touch-target flex items-center justify-center min-h-[140px]"
                                                 onClick={() => handleCategorySelect(category)}
                                             >
-                                                <h2 className="text-xl font-bold text-center leading-tight" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{translatedCategory}</h2>
+                                                <h2 className="text-2xl font-bold text-center leading-tight category-heading">{translatedCategory}</h2>
                                             </Card>
                                         );
                                     })}
                                 </div>
                             </div>
 
-                            {/* Right side: Suggested items - fixed width, natural height */}
-                            <div className="w-full lg:w-80 flex-shrink-0 suggested-items-section">
-                                <Card className="p-4 space-y-3 shadow-sm">
+                            {/* Right side: Suggested items */}
+                            <div className="w-full lg:w-auto flex-shrink-0 order-2 suggested-items-section">
+                                    <Card className="p-6 space-y-4 shadow-sm h-full">
                                     <div>
-                                        <h2 className="text-lg font-bold" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{t('suggestedTitle')}</h2>
-                                        <p className="text-xs text-muted-foreground mt-1" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{t('suggestedSubtitle')}</p>
+                                        <h2 className="text-xl font-bold section-heading">{t('suggestedTitle')}</h2>
+                                        <p className="text-sm text-muted-foreground mt-1">{t('suggestedSubtitle')}</p>
                                     </div>
 
                                     {loadingSuggestions && (
@@ -709,7 +710,7 @@ export default function Kiosk() {
                                     )}
 
                                     {!loadingSuggestions && suggestedItems.length > 0 && (
-                                        <div className="space-y-2">
+                                        <div className="space-y-3">
                                             {suggestedItems.map((item) => {
                                                 const translated = translatedSuggestedItems.get(item.id);
                                                 const displayName = translated?.name || item.name;
@@ -717,18 +718,18 @@ export default function Kiosk() {
                                                 return (
                                                     <Card
                                                         key={item.id}
-                                                        className="p-3 border-muted/60 hover:border-primary transition-colors cursor-pointer"
+                                                        className="p-4 border-muted/60 hover:border-primary transition-colors cursor-pointer"
                                                         onClick={() => setSelectedItem(item)}
                                                     >
-                                                        <div className="flex flex-col gap-2">
+                                                        <div className="flex flex-col gap-3">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div className="min-w-0 flex-1">
-                                                                    <h3 className="text-xs font-semibold line-clamp-1 break-words">{displayName}</h3>
+                                                                    <h3 className="text-sm font-semibold line-clamp-1 break-words">{displayName}</h3>
                                                                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1 break-words">
                                                                         {displayDescription}
                                                                     </p>
                                                                 </div>
-                                                                <span className="text-xs font-bold text-primary flex-shrink-0">
+                                                                <span className="text-sm font-bold text-primary flex-shrink-0">
                                                                     ${item.price.toFixed(2)}
                                                                 </span>
                                                             </div>
@@ -746,7 +747,7 @@ export default function Kiosk() {
                                             })}
                                         </div>
                                     )}
-                                </Card>
+                                    </Card>
                             </div>
                         </div>
                     </div>
