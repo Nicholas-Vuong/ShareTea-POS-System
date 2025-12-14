@@ -283,12 +283,6 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
                         Card
                       </Label>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mobile" id="payment-mobile" className="touch-target" />
-                      <Label htmlFor="payment-mobile" className="cursor-pointer">
-                        Mobile Payment
-                      </Label>
-                    </div>
                   </div>
                 </RadioGroup>
               </div>

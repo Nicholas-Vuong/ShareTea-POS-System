@@ -153,8 +153,8 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background p-6 w-full">
+      <div className="max-w-full mx-auto w-full">
         <div className="mb-6">
           <Button variant="outline" onClick={onBack} className="touch-target">
             <ArrowLeft className="h-5 w-5 mr-2" />
@@ -162,8 +162,8 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
           </Button>
         </div>
 
-        <Card className="p-6">
-          <h1 className="text-3xl font-bold mb-6">{t.reviewOrder}</h1>
+        <Card className="p-6 w-full">
+          <h1 className="text-3xl font-bold mb-6 break-words">{t.reviewOrder}</h1>
 
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -185,21 +185,21 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
                   );
 
                   return (
-                    <div key={`${item.menuItemId}-${index}`} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{item.name}</h3>
-                          <p className="text-sm text-muted-foreground">
+                    <div key={`${item.menuItemId}-${index}`} className="border rounded-lg p-4 w-full">
+                      <div className="flex justify-between items-start mb-3 gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-lg break-words">{item.name}</h3>
+                          <p className="text-sm text-muted-foreground break-words">
                             {displaySize} • {item.options.sugar}% {t.sugar} • {displayIce}
                             {item.options.temperature && ` • ${item.options.temperature}`}
                           </p>
                           {displayToppings.length > 0 && (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-muted-foreground break-words">
                               + {displayToppings.join(', ')}
                             </p>
                           )}
                         </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-shrink-0">
                         {onEditItem && (
                           <Button
                             variant="outline"
@@ -223,7 +223,7 @@ export const CartReview = ({ onBack, onProceed, onEditItem }: CartReviewProps) =
                         </Button>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-medium">{t.quantity}:</span>
                         <div className="flex items-center gap-2">

@@ -150,6 +150,15 @@ export interface TopItemMetric {
   orderCount: number;
 }
 
+export interface ProductUsageMetric {
+  menuItemId: string;
+  menuItemName: string;
+  quantitySold: number;
+  revenue: number;
+  orderCount: number;
+  category: string;
+}
+
 export interface ZReportDay {
   date: string;
   total: number;
@@ -167,6 +176,7 @@ export interface OrdersAnalytics {
   dayOfWeek: Array<{ dow: string; total: number; orders: number }>;
   paymentBreakdown: PaymentBreakdown;
   topItems: TopItemMetric[];
+  productUsage: ProductUsageMetric[];
   totalOrderCount?: number; // Total count from database (may be more than orderHistory.length)
   xReport: {
     total: number;
@@ -188,8 +198,8 @@ export interface OrdersAnalytics {
 
 /**
  * Builds a time window for reports.
- * X report -> last 12 hours
- * Z report -> current day (midnight to now)
+ * X report -> selected time range (respects date picker)
+ * Z report -> selected time range with daily breakdown
  * Custom -> provided ISO dates (inclusive)
  */
 export function buildReportRange(
@@ -2189,9 +2199,11 @@ export const api = {
    */
   async getOrdersAnalytics(options?: { type?: '24h' | '7d' | '30d' | 'custom'; from?: string; to?: string }): Promise<OrdersAnalytics> {
     const range = buildReportRange(options?.type, options?.from, options?.to);
-    // Include both PAID and COMPLETED as they represent completed sales
+    // Include COMPLETED, READY, PREPARING, PLACED as they represent actual orders
     // Exclude VOID and REFUNDED as they don't represent actual sales
-    const statuses = ['COMPLETED', 'PAID'];
+    const statuses = ['COMPLETED', 'READY', 'PREPARING', 'PLACED'];
+
+    console.log('Fetching orders analytics:', { range, statuses });
 
     // First, get the total count of orders (fast count query)
     const { count: totalOrderCount, error: countError } = await supabase
@@ -2204,6 +2216,8 @@ export const api = {
     if (countError) {
       console.warn('Failed to get order count:', countError);
     }
+
+    console.log('Total order count:', totalOrderCount);
 
     // Fetch orders WITHOUT order_items for much better performance
     // We'll fetch order_items separately only if needed for top items
@@ -2237,69 +2251,80 @@ export const api = {
 
     const orders = allData;
     
-    // Fetch top items separately using a more efficient query
-    // This is much faster than joining order_items for every order
-    const { data: topItemsData, error: topItemsError } = await supabase
+    console.log('Fetched orders:', orders.length);
+    
+    // Fetch order items efficiently using date range instead of order IDs
+    // This avoids Supabase .in() limitations and is more efficient
+    let topItemsMap = new Map<string, TopItemMetric>();
+    const productUsageMap = new Map<string, ProductUsageMetric>();
+    
+    // Always fetch top items - no arbitrary limit
+    // Use date range for efficient querying instead of IN clause with order IDs
+    console.log('Fetching order items for date range:', range.start, 'to', range.end);
+    
+    // Fetch order items directly by joining with orders table and filtering by date
+    // This is much more efficient than using .in() with thousands of order IDs
+    const { data: itemsData, error: itemsError } = await supabase
       .from('order_items')
       .select(`
+        order_id,
+        menu_item_id,
         quantity,
         unit_price,
-        menu_items!inner(name)
+        menu_items!inner(menu_item_id, name, category),
+        orders!inner(order_time, status)
       `)
-      .in('order_id', orders.map(o => o.order_id))
-      .limit(10000); // Reasonable limit for top items calculation
-
-    // Build a map of order_id to order_items for faster lookup
-    const orderItemsMap = new Map<number, any[]>();
-    if (topItemsData && !topItemsError) {
-      // Group order_items by order_id
-      const orderItemsByOrder = new Map<number, any[]>();
-      topItemsData.forEach((item: any) => {
-        // We need to get the order_id from the join, but Supabase might not return it
-        // So we'll fetch it differently
-      });
-    }
-
-    // Alternative: Fetch top items using a direct SQL-like approach via RPC or separate query
-    // For now, we'll calculate top items from a sample or skip if too many orders
-    const shouldFetchTopItems = orders.length < 5000; // Only fetch if reasonable number of orders
+      .gte('orders.order_time', range.start)
+      .lte('orders.order_time', range.end)
+      .in('orders.status', statuses);
     
-    let topItemsMap = new Map<string, TopItemMetric>();
-    if (shouldFetchTopItems) {
-      // Fetch order_items for top items calculation (only if not too many orders)
-      const orderIds = orders.map(o => o.order_id);
-      const chunks = [];
-      for (let i = 0; i < orderIds.length; i += 1000) {
-        chunks.push(orderIds.slice(i, i + 1000));
-      }
+    if (itemsError) {
+      console.error('Error fetching order items for analytics:', itemsError);
+      console.error('Error details:', itemsError.message, itemsError.details, itemsError.hint);
+    } else {
+      console.log('Fetched order items total:', itemsData?.length || 0);
+      
+      if (itemsData) {
+        itemsData.forEach((oi: any) => {
+          const menuItemId = (oi.menu_item_id || oi.menu_items?.menu_item_id)?.toString();
+          const name = oi.menu_items?.name || 'Unknown item';
+          const category = oi.menu_items?.category || 'Unknown';
+          const quantity = oi.quantity || 0;
+          const revenue = parseFloat((oi.unit_price || 0).toString()) * quantity;
 
-      for (const chunk of chunks) {
-        const { data: itemsData, error: itemsError } = await supabase
-          .from('order_items')
-          .select(`
-            order_id,
-            quantity,
-            unit_price,
-            menu_items!inner(name)
-          `)
-          .in('order_id', chunk);
-
-        if (itemsData && !itemsError) {
-          itemsData.forEach((oi: any) => {
-            const name = oi.menu_items?.name || 'Unknown item';
-            const quantity = oi.quantity || 0;
-            const revenue = parseFloat((oi.unit_price || 0).toString()) * quantity;
-            const existing = topItemsMap.get(name) || { name, quantity: 0, revenue: 0, orderCount: 0 };
-            topItemsMap.set(name, {
-              name,
-              quantity: existing.quantity + quantity,
-              revenue: existing.revenue + revenue,
-              orderCount: existing.orderCount + 1,
-            });
+          // Update topItemsMap (grouped by name for backward compatibility)
+          const existingTop = topItemsMap.get(name) || { name, quantity: 0, revenue: 0, orderCount: 0 };
+          topItemsMap.set(name, {
+            name,
+            quantity: existingTop.quantity + quantity,
+            revenue: existingTop.revenue + revenue,
+            orderCount: existingTop.orderCount + 1,
           });
-        }
+
+          // Update productUsageMap (grouped by menu item ID for detailed tracking)
+          if (menuItemId) {
+            const existingProduct = productUsageMap.get(menuItemId) || {
+              menuItemId,
+              menuItemName: name,
+              quantitySold: 0,
+              revenue: 0,
+              orderCount: 0,
+              category,
+            };
+            productUsageMap.set(menuItemId, {
+              ...existingProduct,
+              quantitySold: existingProduct.quantitySold + quantity,
+              revenue: existingProduct.revenue + revenue,
+              orderCount: existingProduct.orderCount + 1,
+            });
+          }
+        });
       }
     }
+    
+    console.log('Top items map size:', topItemsMap.size);
+    console.log('Product usage map size:', productUsageMap.size);
+    
     const getOrderTime = (order: any) =>
       order.order_time || order.orderTime;
 
@@ -2356,7 +2381,7 @@ export const api = {
 
       // Order history
       orderHistory.push({
-        orderId: (order.order_id || order.id).toString(),
+        orderId: order.order_id.toString(),
         createdAt: orderTimeStr,
         total,
         paymentMethod: payment,
@@ -2421,13 +2446,44 @@ export const api = {
       .sort((a, b) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(a.dow) - ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(b.dow));
 
     const topItems: TopItemMetric[] = Array.from(topItemsMap.values()).sort((a, b) => b.revenue - a.revenue);
+    const productUsage: ProductUsageMetric[] = Array.from(productUsageMap.values())
+      .sort((a, b) => b.quantitySold - a.quantitySold);
+
+    // X-Report: Use the same date range as the overall report (respects user's time selection)
+    // This allows managers to see a "snapshot" for any selected period
+    const xReportOrders = orders; // Use all orders in the selected range
+
+    const xReportHourlyMap = new Map<number, { total: number; orders: number }>();
+    const xReportPaymentMap: PaymentBreakdown = {};
+    let xReportTotal = 0;
+    let xReportOrderCount = 0;
+
+    xReportOrders.forEach((order: any) => {
+      const orderTime = new Date(getOrderTime(order));
+      const hour = orderTime.getUTCHours();
+      const total = parseFloat((order.total ?? 0).toString());
+      const payment = (order.payment_method || 'unknown').toString();
+
+      xReportTotal += total;
+      xReportOrderCount += 1;
+
+      const xHour = xReportHourlyMap.get(hour) || { total: 0, orders: 0 };
+      xReportHourlyMap.set(hour, { total: xHour.total + total, orders: xHour.orders + 1 });
+
+      const xPay = xReportPaymentMap[payment] || { amount: 0, count: 0 };
+      xReportPaymentMap[payment] = { amount: xPay.amount + total, count: xPay.count + 1 };
+    });
+
+    const xReportHourly: HourlyMetric[] = Array.from(xReportHourlyMap.entries())
+      .map(([hour, v]) => ({ hour, total: v.total, orders: v.orders }))
+      .sort((a, b) => a.hour - b.hour);
 
     const xReport = {
-      total: daily.reduce((sum, d) => sum + d.total, 0),
-      orders: daily.reduce((sum, d) => sum + d.orders, 0),
-      avgOrderValue: daily.reduce((sum, d) => sum + d.total, 0) / (daily.reduce((sum, d) => sum + d.orders, 0) || 1),
-      payments: paymentMap,
-      hourly,
+      total: xReportTotal,
+      orders: xReportOrderCount,
+      avgOrderValue: xReportOrderCount ? xReportTotal / xReportOrderCount : 0,
+      payments: xReportPaymentMap,
+      hourly: xReportHourly,
     };
 
     const zPerDay: ZReportDay[] = Array.from(zDayMap.entries())
@@ -2472,6 +2528,7 @@ export const api = {
       dayOfWeek,
       paymentBreakdown: paymentMap,
       topItems,
+      productUsage,
       totalOrderCount: totalOrderCount || orders.length, // Use actual count from database
       xReport,
       zReport,

@@ -259,10 +259,10 @@ export const ItemCustomizer = ({
     };
 
     return (
-        <div className="w-full max-w-6xl mx-auto">
+        <div className="w-full max-w-full mx-auto">
             <div className="mb-4">
-                <h2 className="text-2xl font-bold mb-2">{translatedItemName}</h2>
-                <div className="flex items-baseline gap-3">
+                <h2 className="text-2xl font-bold mb-2 break-words">{translatedItemName}</h2>
+                <div className="flex items-baseline gap-3 flex-wrap">
                     <p className="text-sm text-muted-foreground line-through">${itemPrice.toFixed(2)}</p>
                     <p className="text-2xl text-primary font-bold">${currentPrice.toFixed(2)}</p>
                     {currentPrice !== itemPrice && (
@@ -273,9 +273,9 @@ export const ItemCustomizer = ({
                 </div>
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex flex-col lg:flex-row gap-6 w-full">
                 {/* Left side: Customizations */}
-                <Card className="flex-1 p-6">
+                <Card className="flex-1 p-6 w-full min-w-0">
                     <div className="space-y-6">
                         <div>
                             <Label className="text-lg font-semibold mb-3 block">{t.size}</Label>
@@ -430,7 +430,7 @@ export const ItemCustomizer = ({
                 </Card>
 
                 {/* Right side: Nutrition info */}
-                <div className="w-80 flex-shrink-0">
+                <div className="w-full lg:w-80 flex-shrink-0">
                     <NutritionInfoPanel menuItemId={menuItemId} menuItemName={itemName} customization={nutritionCustomization} />
                 </div>
             </div>

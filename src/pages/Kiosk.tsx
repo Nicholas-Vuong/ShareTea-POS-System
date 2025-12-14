@@ -85,6 +85,7 @@ export default function Kiosk() {
     const { toast } = useToast();
     const [translatedTexts, setTranslatedTexts] = useState<Record<string, string>>({});
     const [translatedCategories, setTranslatedCategories] = useState<Map<string, string>>(new Map());
+    const [translatedSuggestedItems, setTranslatedSuggestedItems] = useState<Map<string, { name: string; description: string }>>(new Map());
     const [isTranslating, setIsTranslating] = useState(false);
     const [editContext, setEditContext] = useState<{ index: number; item: CartItem; returnView: View } | null>(null);
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
@@ -269,6 +270,51 @@ export default function Kiosk() {
             cancelled = true;
         };
     }, [menu]);
+
+    // Translate suggested items when they change or language changes
+    useEffect(() => {
+        let cancelled = false;
+
+        const translateSuggestedItems = async () => {
+            if (language === 'en' || suggestedItems.length === 0) {
+                setTranslatedSuggestedItems(new Map());
+                return;
+            }
+
+            try {
+                const names = suggestedItems.map(item => item.name);
+                const descriptions = suggestedItems.map(item => item.description || '');
+
+                const translatedNames = await translateMultiple(names, language, 'en');
+                const translatedDescriptions = await translateMultiple(descriptions, language, 'en');
+
+                if (cancelled) return;
+
+                const translatedMap = new Map<string, { name: string; description: string }>();
+                suggestedItems.forEach((item, index) => {
+                    translatedMap.set(item.id, {
+                        name: translatedNames[index] || item.name,
+                        description: translatedDescriptions[index] || item.description || '',
+                    });
+                });
+
+                if (!cancelled) {
+                    setTranslatedSuggestedItems(translatedMap);
+                }
+            } catch (error) {
+                console.error('Error translating suggested items:', error);
+                if (!cancelled) {
+                    setTranslatedSuggestedItems(new Map());
+                }
+            }
+        };
+
+        translateSuggestedItems();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [suggestedItems, language]);
 
     // Fetch active order status when on home screen and user is logged in
     useEffect(() => {
@@ -583,10 +629,10 @@ export default function Kiosk() {
                         </div>
                     </header>
 
-                    <div className="container mx-auto px-6 py-12 flex-1">
+                    <div className="container mx-auto px-6 py-12 flex-1 w-full max-w-full">
                         <div className="text-center space-y-4 mb-12">
-                            <h1 className="text-5xl font-bold text-primary">{t('welcome')}</h1>
-                            <p className="text-2xl text-muted-foreground">{t('selectCategory')}</p>
+                            <h1 className="text-5xl font-bold text-primary break-words">{t('welcome')}</h1>
+                            <p className="text-2xl text-muted-foreground break-words">{t('selectCategory')}</p>
                         </div>
 
                         {/* Active Order Bar - shown above categories when order exists */}
@@ -622,36 +668,36 @@ export default function Kiosk() {
                             </Card>
                         )}
 
-                        <div className="flex flex-col lg:flex-row gap-8 items-start">
-                            {/* Left side: Weather section - larger with more vertical content */}
-                            <div className="w-full lg:w-80 flex-shrink-0">
+                        <div className="flex flex-col lg:flex-row gap-8 items-start main-content-layout">
+                            {/* Left side: Weather section - limited size */}
+                            <div className="w-full lg:w-72 flex-shrink-0">
                                 <WeatherTile compact={false} />
                             </div>
 
-                            {/* Middle: Categories */}
-                            <div className="flex-1 space-y-6 min-w-0">
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+                            {/* Middle: Categories - flexible grid that adapts */}
+                            <div className="flex-1 space-y-6 min-w-0 w-full">
+                                <div className="category-grid">
                                     {categories.map((category) => {
                                         const translatedCategory = translatedCategories.get(category) || category;
                                         return (
                                             <Card
                                                 key={category}
-                                                className="p-10 hover:shadow-xl transition-all cursor-pointer touch-target flex items-center justify-center min-h-[140px]"
+                                                className="p-8 hover:shadow-xl transition-all cursor-pointer touch-target flex items-center justify-center min-h-[120px]"
                                                 onClick={() => handleCategorySelect(category)}
                                             >
-                                                <h2 className="text-2xl font-bold text-center leading-tight break-words">{translatedCategory}</h2>
+                                                <h2 className="text-xl font-bold text-center leading-tight" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{translatedCategory}</h2>
                                             </Card>
                                         );
                                     })}
                                 </div>
                             </div>
 
-                            {/* Right side: Suggested items - takes up remaining space */}
-                            <div className="w-full lg:flex-1 lg:max-w-md flex-shrink-0">
-                                <Card className="p-6 space-y-4 shadow-sm sticky top-6 h-full">
+                            {/* Right side: Suggested items - fixed width, natural height */}
+                            <div className="w-full lg:w-80 flex-shrink-0 suggested-items-section">
+                                <Card className="p-4 space-y-3 shadow-sm">
                                     <div>
-                                        <h2 className="text-xl font-bold">{t('suggestedTitle')}</h2>
-                                        <p className="text-sm text-muted-foreground mt-1">{t('suggestedSubtitle')}</p>
+                                        <h2 className="text-lg font-bold" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{t('suggestedTitle')}</h2>
+                                        <p className="text-xs text-muted-foreground mt-1" style={{ wordBreak: 'keep-all', whiteSpace: 'normal' }}>{t('suggestedSubtitle')}</p>
                                     </div>
 
                                     {loadingSuggestions && (
@@ -663,36 +709,41 @@ export default function Kiosk() {
                                     )}
 
                                     {!loadingSuggestions && suggestedItems.length > 0 && (
-                                        <div className="space-y-3">
-                                            {suggestedItems.map((item) => (
-                                                <Card
-                                                    key={item.id}
-                                                    className="p-4 border-muted/60 hover:border-primary transition-colors cursor-pointer"
-                                                    onClick={() => setSelectedItem(item)}
-                                                >
-                                                    <div className="flex flex-col gap-3">
-                                                        <div className="flex items-start justify-between gap-2">
-                                                            <div className="min-w-0 flex-1">
-                                                                <h3 className="text-sm font-semibold line-clamp-1">{item.name}</h3>
-                                                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                                                    {item.description || 'Customer favorite'}
-                                                                </p>
+                                        <div className="space-y-2">
+                                            {suggestedItems.map((item) => {
+                                                const translated = translatedSuggestedItems.get(item.id);
+                                                const displayName = translated?.name || item.name;
+                                                const displayDescription = translated?.description || item.description || 'Customer favorite';
+                                                return (
+                                                    <Card
+                                                        key={item.id}
+                                                        className="p-3 border-muted/60 hover:border-primary transition-colors cursor-pointer"
+                                                        onClick={() => setSelectedItem(item)}
+                                                    >
+                                                        <div className="flex flex-col gap-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="min-w-0 flex-1">
+                                                                    <h3 className="text-xs font-semibold line-clamp-1 break-words">{displayName}</h3>
+                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 break-words">
+                                                                        {displayDescription}
+                                                                    </p>
+                                                                </div>
+                                                                <span className="text-xs font-bold text-primary flex-shrink-0">
+                                                                    ${item.price.toFixed(2)}
+                                                                </span>
                                                             </div>
-                                                            <span className="text-sm font-bold text-primary flex-shrink-0">
-                                                                ${item.price.toFixed(2)}
-                                                            </span>
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                className="w-full touch-target text-xs"
+                                                                onClick={() => handleSuggestedSelect(item)}
+                                                            >
+                                                                {t('viewItem')}
+                                                            </Button>
                                                         </div>
-                                                        <Button
-                                                            variant="secondary"
-                                                            size="sm"
-                                                            className="w-full touch-target text-xs"
-                                                            onClick={() => handleSuggestedSelect(item)}
-                                                        >
-                                                            {t('viewItem')}
-                                                        </Button>
-                                                    </div>
-                                                </Card>
-                                            ))}
+                                                    </Card>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </Card>
@@ -757,9 +808,9 @@ export default function Kiosk() {
                         </div>
                     </header>
 
-                    <div className="flex-1 overflow-y-auto p-6">
+                    <div className="flex-1 overflow-y-auto p-6 w-full">
                         {selectedItem ? (
-                            <div className="space-y-4">
+                            <div className="space-y-4 w-full max-w-full">
                                 <Button variant="outline" onClick={handleExitCustomizer} className="touch-target">
                                     <ArrowLeft className="h-5 w-5 mr-2" />
                                     {t('backToMenu')}
@@ -852,12 +903,12 @@ export default function Kiosk() {
                         )}
                     </header>
 
-                    <div className="flex-1 overflow-y-auto">
-                        <div className="container mx-auto px-6 py-8 max-w-4xl">
+                    <div className="flex-1 overflow-y-auto w-full">
+                        <div className="container mx-auto px-6 py-8 w-full max-w-full">
                             {!user || user.role !== 'customer' ? (
                                 <div className="text-center py-12 space-y-4">
-                                    <h1 className="text-3xl font-bold text-primary">{t('signInRequired')}</h1>
-                                    <p className="text-muted-foreground max-w-md mx-auto">
+                                    <h1 className="text-3xl font-bold text-primary break-words">{t('signInRequired')}</h1>
+                                    <p className="text-muted-foreground max-w-full mx-auto break-words px-4">
                                         {t('signInToViewOrders')}
                                     </p>
                                     <Button
@@ -871,7 +922,7 @@ export default function Kiosk() {
                             ) : (
                                 <>
                                     <div className="mb-6">
-                                        <h1 className="text-3xl font-bold text-primary">{t('pastOrders')}</h1>
+                                        <h1 className="text-3xl font-bold text-primary break-words">{t('pastOrders')}</h1>
                                     </div>
 
                                     {loadingPastOrders ? (

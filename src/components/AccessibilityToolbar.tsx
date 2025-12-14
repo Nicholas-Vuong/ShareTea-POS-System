@@ -24,7 +24,10 @@ export const AccessibilityToolbar = () => {
   }, [highContrast]);
 
   useEffect(() => {
-    document.documentElement.style.fontSize = textScale === 100 ? '16px' : textScale === 125 ? '20px' : '24px';
+    // Apply text scale to document root
+    const rootFontSize = textScale === 100 ? '16px' : textScale === 125 ? '20px' : '24px';
+    document.documentElement.style.fontSize = rootFontSize;
+    document.documentElement.setAttribute('data-text-scale', String(textScale));
   }, [textScale]);
 
   const toggleCollapse = () => {
@@ -36,7 +39,7 @@ export const AccessibilityToolbar = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 rounded-lg bg-card p-2 shadow-lg border border-border transition-all duration-300">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 rounded-lg bg-card p-2 shadow-lg border border-border transition-all duration-300 accessibility-toolbar max-w-fit">
       <Button
         variant="ghost"
         size="icon"

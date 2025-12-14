@@ -81,20 +81,20 @@ export const MenuList = ({ items, onSelect, selectedCategory }: MenuListProps) =
     : items.filter((item) => item.active);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
       {filteredItems.map((item) => {
         const translated = translatedItems.get(item.id);
         const displayName = translated?.name || item.name;
         const displayDescription = translated?.description || item.description || '';
 
         return (
-          <Card key={item.id} className="p-4 hover:shadow-lg transition-shadow">
-            <div className="space-y-2">
-              <div className="flex justify-between items-start">
-                <h3 className="font-semibold text-lg">{displayName}</h3>
-                <span className="text-lg font-bold text-primary">${item.price.toFixed(2)}</span>
+          <Card key={item.id} className="p-4 hover:shadow-lg transition-shadow w-full max-w-full">
+            <div className="space-y-2 w-full">
+              <div className="flex justify-between items-start gap-2">
+                <h3 className="font-semibold text-lg break-words flex-1 min-w-0">{displayName}</h3>
+                <span className="text-lg font-bold text-primary flex-shrink-0">${item.price.toFixed(2)}</span>
               </div>
-              <p className="text-sm text-muted-foreground line-clamp-2">{displayDescription}</p>
+              <p className="text-sm text-muted-foreground line-clamp-2 break-words">{displayDescription}</p>
               <Button
                 onClick={() => onSelect(item)}
                 className="w-full touch-target"

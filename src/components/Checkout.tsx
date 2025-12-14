@@ -20,7 +20,6 @@ const translations = {
     paymentMethod: 'Payment Method',
     cash: 'Cash',
     card: 'Card',
-    mobile: 'Mobile Payment',
     promoCode: 'Promo Code',
     enterPromoCode: 'Enter promo code',
     apply: 'Apply',
@@ -39,7 +38,6 @@ const translations = {
     paymentMethod: 'Método de pago',
     cash: 'Efectivo',
     card: 'Tarjeta',
-    mobile: 'Pago móvil',
     promoCode: 'Código promocional',
     enterPromoCode: 'Ingrese código promocional',
     apply: 'Aplicar',
@@ -137,12 +135,6 @@ export const Checkout = ({ onBack, onComplete, isSubmitting = false }: CheckoutP
                       <RadioGroupItem value="card" id="payment-card" className="touch-target" />
                       <Label htmlFor="payment-card" className="cursor-pointer">
                         {t.card}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="mobile" id="payment-mobile" className="touch-target" />
-                      <Label htmlFor="payment-mobile" className="cursor-pointer">
-                        {t.mobile}
                       </Label>
                     </div>
                   </div>
