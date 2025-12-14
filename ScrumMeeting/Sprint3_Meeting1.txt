@@ -1,0 +1,36 @@
+SCRUM Meeting 1 - Agenda & Minutes
+Meeting Date: Sunday, 11/30
+Prepared By: Rahul Saravanakumar
+
+Minutes from Previous Meeting:
+The team reviewed Sprint 2 outcomes and confirmed the MVP was stable. We identified Sprint 3 priorities: auth/security, accessibility, guest ordering, seasonal items, and infra tasks.
+
+Agenda Items:
+- Review Sprint 3 backlog and confirm scope
+- Reassign tasks based on availability
+- Identify Sprint 2 blockers
+- Align backend–frontend integration timeline
+- Kick off accessibility testing prep
+
+Status Update:
+Accomplishments:
+- Draft accessibility audit checklist prepared
+- High-contrast + resizable text prototypes started
+- RDS parameter group configuration completed
+- Domain + SSL work initiated
+
+Tasks Completed:
+PostgreSQL RDS Config - hrudithl - yes
+Domain + SSL (initial) - jhanghirbabar - no
+
+Next Steps:
+Begin OAuth2 login, OTP messaging tests, monitoring alerts, backup strategy, and accessibility improvements.
+
+Assignments:
+OAuth2 Login Setup - hrudithl
+OTP Using Messages - jhanghirbabar
+Monitoring Alerts - sudeep.pasula
+Backup Strategy - hrudithl
+Guest Ordering Prep - rahulgonsalves
+Resizable Text / Focus Indicators - rahulsaravanakumar
+Timed Seasonal Items - nicholas_vuong
