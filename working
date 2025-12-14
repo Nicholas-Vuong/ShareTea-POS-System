@@ -1,8 +1,3 @@
-- Remove the nutritional information from the cashier side. 
-
-- Add in relevant images using the images found in the ShareTea Images tab. 
-Have an image shown in the selection of the item when it is shown and make sure to link the items to their proper image.
-
 - When viewing the order history from my account, I noticed some other orders I had not previously made. Fix this and make sure the only orders shown in the order history are from the user that is currently working.
 
 - Add in the ability for the customer to leave a review after their order and for this to show up as part of the manager side. Make sure to link this to the database as a section in each order. 

@@ -478,9 +478,12 @@ export default function Cashier() {
                         itemName={selectedItem.name}
                         itemPrice={selectedItem.price}
                         temperatureOptions={selectedItem.temperatureOptions}
+                        category={selectedItem.category}
                         initialOptions={editingInitialOptions}
                         initialQuantity={editingInitialQuantity}
                         mode={isEditingItem ? 'edit' : 'add'}
+                        showNutritionInfo={false}
+                        showImage={false}
                         onAddToCart={(quantity, options) =>
                             handleAddToCart(selectedItem, quantity, options)
                         }
@@ -494,6 +497,7 @@ export default function Cashier() {
                   items={filteredMenu}
                   onSelect={setSelectedItem}
                   selectedCategory={search ? undefined : selectedCategory}
+                  showImages={false}
                 />
               </div>
             )}

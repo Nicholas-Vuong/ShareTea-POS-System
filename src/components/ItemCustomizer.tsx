@@ -26,6 +26,7 @@ import { translateText, translateMultiple } from '@/lib/translate';
 import { NutritionInfoPanel } from '@/components/NutritionInfoPanel';
 import type { CustomizationOptions } from '@/lib/nutrition';
 import { calculateItemPrice, SIZE_PRICING, SUGAR_PRICING, TOPPING_PRICING, formatPriceModifier } from '@/lib/pricing';
+import { getMenuItemImage } from '@/lib/imageMapping';
 
 /**
  * Props for ItemCustomizer component
@@ -35,11 +36,19 @@ interface ItemCustomizerProps {
     itemName: string;
     itemPrice: number;
     temperatureOptions?: ('Hot' | 'Cold')[];
+    category?: string;
     onAddToCart: (quantity: number, options: CartItemOptions) => void;
     onCancel: () => void;
     initialOptions?: CartItemOptions;
     initialQuantity?: number;
     mode?: 'add' | 'edit';
+    showNutritionInfo?: boolean;
+    showImage?: boolean;
+    translatedOptions?: {
+        sizes?: Map<string, string>;
+        ice?: Map<string, string>;
+        toppings?: Map<string, string>;
+    };
 }
 
 const toppingsList = [
@@ -95,11 +104,14 @@ export const ItemCustomizer = ({
     itemName,
     itemPrice,
     temperatureOptions = ['Hot', 'Cold'],
+    category,
     onAddToCart,
     onCancel,
     initialOptions,
     initialQuantity,
     mode = 'add',
+    showNutritionInfo = true,
+    showImage = true,
     translatedOptions,
 }: ItemCustomizerProps) => {
     const t = useTranslation(translations);
@@ -258,19 +270,53 @@ export const ItemCustomizer = ({
         onAddToCart(quantity, { size, sugar, ice, temperature, toppings });
     };
 
+    const imagePath = showImage ? getMenuItemImage(itemName, category) : null;
+
     return (
         <div className="w-full max-w-full mx-auto">
             <div className="mb-4">
-                <h2 className="text-2xl font-bold mb-2 break-words">{translatedItemName}</h2>
-                <div className="flex items-baseline gap-3 flex-wrap">
-                    <p className="text-sm text-muted-foreground line-through">${itemPrice.toFixed(2)}</p>
-                    <p className="text-2xl text-primary font-bold">${currentPrice.toFixed(2)}</p>
-                    {currentPrice !== itemPrice && (
-                        <p className="text-sm text-green-600 font-medium">
-                            {formatPriceModifier(currentPrice - itemPrice)}
-                        </p>
-                    )}
-                </div>
+                {showImage && imagePath ? (
+                    <div className="flex gap-4 items-stretch mb-4">
+                        {/* Image on the left - fills height */}
+                        <div className="w-32 flex-shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center self-stretch">
+                            <img 
+                                src={imagePath} 
+                                alt={translatedItemName}
+                                className="w-full h-full object-cover min-h-[120px]"
+                                onError={(e) => {
+                                    // Hide image on error
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                            />
+                        </div>
+                        {/* Text content on the right */}
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-2xl font-bold mb-2 break-words">{translatedItemName}</h2>
+                            <div className="flex items-baseline gap-3 flex-wrap">
+                                <p className="text-sm text-muted-foreground line-through">${itemPrice.toFixed(2)}</p>
+                                <p className="text-2xl text-primary font-bold">${currentPrice.toFixed(2)}</p>
+                                {currentPrice !== itemPrice && (
+                                    <p className="text-sm text-green-600 font-medium">
+                                        {formatPriceModifier(currentPrice - itemPrice)}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        <h2 className="text-2xl font-bold mb-2 break-words">{translatedItemName}</h2>
+                        <div className="flex items-baseline gap-3 flex-wrap">
+                            <p className="text-sm text-muted-foreground line-through">${itemPrice.toFixed(2)}</p>
+                            <p className="text-2xl text-primary font-bold">${currentPrice.toFixed(2)}</p>
+                            {currentPrice !== itemPrice && (
+                                <p className="text-sm text-green-600 font-medium">
+                                    {formatPriceModifier(currentPrice - itemPrice)}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-col lg:flex-row gap-6 w-full">
@@ -430,9 +476,11 @@ export const ItemCustomizer = ({
                 </Card>
 
                 {/* Right side: Nutrition info */}
-                <div className="w-full lg:w-80 flex-shrink-0">
-                    <NutritionInfoPanel menuItemId={menuItemId} menuItemName={itemName} customization={nutritionCustomization} />
-                </div>
+                {showNutritionInfo && (
+                    <div className="w-full lg:w-80 flex-shrink-0">
+                        <NutritionInfoPanel menuItemId={menuItemId} menuItemName={itemName} customization={nutritionCustomization} />
+                    </div>
+                )}
             </div>
         </div>
     );

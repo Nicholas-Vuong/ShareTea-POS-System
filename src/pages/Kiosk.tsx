@@ -30,6 +30,7 @@ import { translateText, translateMultiple } from '@/lib/translate';
 import { useAuthStore } from '@/store/authStore';
 import { OrderHistory } from '@/components/OrderHistory';
 import { calculateItemPrice } from '@/lib/pricing';
+import { getMenuItemImage } from '@/lib/imageMapping';
 
 // Base English translations
 const baseTranslations = {
@@ -715,32 +716,55 @@ export default function Kiosk() {
                                                 const translated = translatedSuggestedItems.get(item.id);
                                                 const displayName = translated?.name || item.name;
                                                 const displayDescription = translated?.description || item.description || 'Customer favorite';
+                                                const imagePath = getMenuItemImage(item.name, item.category);
                                                 return (
                                                     <Card
                                                         key={item.id}
                                                         className="p-4 border-muted/60 hover:border-primary transition-colors cursor-pointer"
                                                         onClick={() => setSelectedItem(item)}
                                                     >
-                                                        <div className="flex flex-col gap-3">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="min-w-0 flex-1">
-                                                                    <h3 className="text-sm font-semibold line-clamp-1 break-words">{displayName}</h3>
-                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 break-words">
-                                                                        {displayDescription}
-                                                                    </p>
+                                                        <div className="flex gap-3 items-stretch">
+                                                            {/* Image on the left - fills height */}
+                                                            {imagePath && (
+                                                                <div className="w-20 flex-shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center self-stretch">
+                                                                    <img 
+                                                                        src={imagePath} 
+                                                                        alt={displayName}
+                                                                        className="w-full h-full object-cover min-h-[100px]"
+                                                                        onError={(e) => {
+                                                                            // Hide image on error
+                                                                            (e.target as HTMLImageElement).style.display = 'none';
+                                                                        }}
+                                                                    />
                                                                 </div>
-                                                                <span className="text-sm font-bold text-primary flex-shrink-0">
-                                                                    ${item.price.toFixed(2)}
-                                                                </span>
+                                                            )}
+                                                            {/* Text content on the right */}
+                                                            <div className="flex-1 min-w-0 flex flex-col justify-between">
+                                                                <div>
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <h3 className="text-sm font-semibold line-clamp-1 break-words">{displayName}</h3>
+                                                                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1 break-words">
+                                                                                {displayDescription}
+                                                                            </p>
+                                                                        </div>
+                                                                        <span className="text-sm font-bold text-primary flex-shrink-0">
+                                                                            ${item.price.toFixed(2)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Button centered at bottom */}
+                                                                <div className="pt-2 flex justify-center">
+                                                                    <Button
+                                                                        variant="secondary"
+                                                                        size="sm"
+                                                                        className="w-full touch-target text-xs"
+                                                                        onClick={() => handleSuggestedSelect(item)}
+                                                                    >
+                                                                        {t('viewItem')}
+                                                                    </Button>
+                                                                </div>
                                                             </div>
-                                                            <Button
-                                                                variant="secondary"
-                                                                size="sm"
-                                                                className="w-full touch-target text-xs"
-                                                                onClick={() => handleSuggestedSelect(item)}
-                                                            >
-                                                                {t('viewItem')}
-                                                            </Button>
                                                         </div>
                                                     </Card>
                                                 );
@@ -821,6 +845,7 @@ export default function Kiosk() {
                                     itemName={selectedItem.name}
                                     itemPrice={selectedItem.price}
                                     temperatureOptions={selectedItem.temperatureOptions}
+                                    category={selectedItem.category}
                                     initialOptions={editingInitialOptions}
                                     initialQuantity={editingInitialQuantity}
                                     mode={isEditingItem ? 'edit' : 'add'}
