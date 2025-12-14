@@ -1,9 +1,11 @@
-- When viewing the order history from my account, I noticed some other orders I had not previously made. Fix this and make sure the only orders shown in the order history are from the user that is currently working.
-
 - Add in the ability for the customer to leave a review after their order and for this to show up as part of the manager side. Make sure to link this to the database as a section in each order. 
 
 - When adding a new menu item, make sure that it shows up on the menu and the ordering interfaces and in the menu boards location. 
 
 - Make sure that you can link inventory items to the new menu item. This should be a specific set of ingredients per menu item and they should be very clearly linked. Make sure when any order is placed on either the customer side or the cashier side it effectively removes from the ingredients used in that order.
 
-- Currently the 
+Beyond
+Past orders
+nutrition
+suggested for you
+reviews

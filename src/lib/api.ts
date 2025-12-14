@@ -607,7 +607,7 @@ export const api = {
       subtotal += itemSubtotal;
 
       // Create order item
-      const { error: itemError } = await supabase
+      const { data: orderItemData, error: itemError } = await supabase
         .from('order_items')
         .insert({
           order_id: orderData.order_id,
@@ -621,10 +621,148 @@ export const api = {
             ice: item.options.ice,
             toppings: item.options.toppings,
           },
-        });
+        })
+        .select('order_item_id')
+        .single();
 
-      if (itemError) {
-        throw new Error(`Failed to create order item: ${itemError.message}`);
+      if (itemError || !orderItemData) {
+        throw new Error(`Failed to create order item: ${itemError?.message || 'Unknown error'}`);
+      }
+
+      const orderItemId = orderItemData.order_item_id;
+
+      // Reduce inventory based on menu item ingredients
+      // Get ingredients for this menu item
+      const { data: ingredients, error: ingredientsError } = await supabase
+        .from('menu_item_ingredients')
+        .select('inventory_item_id, quantity_per_serving')
+        .eq('menu_item_id', parseInt(item.menuItemId));
+
+      if (!ingredientsError && ingredients) {
+        for (const ingredient of ingredients) {
+          const totalQuantity = parseFloat(ingredient.quantity_per_serving.toString()) * item.quantity;
+          
+          // Reduce inventory
+          const { error: inventoryError } = await supabase.rpc('decrement_inventory', {
+            p_inventory_item_id: ingredient.inventory_item_id,
+            p_quantity: totalQuantity,
+          });
+
+          // If RPC doesn't exist, manually update
+          if (inventoryError && (inventoryError.message.includes('function') || inventoryError.message.includes('does not exist'))) {
+            // Get current inventory
+            const { data: currentInventory, error: getError } = await supabase
+              .from('inventory_items')
+              .select('on_hand_quantity')
+              .eq('inventory_item_id', ingredient.inventory_item_id)
+              .single();
+
+            if (!getError && currentInventory) {
+              const newQuantity = Math.max(0, parseFloat(currentInventory.on_hand_quantity.toString()) - totalQuantity);
+              
+              const { error: updateError } = await supabase
+                .from('inventory_items')
+                .update({ on_hand_quantity: newQuantity })
+                .eq('inventory_item_id', ingredient.inventory_item_id);
+
+              if (updateError) {
+                console.warn(`Failed to update inventory for item ${ingredient.inventory_item_id}:`, updateError);
+              }
+
+              // Create inventory transaction record
+              await supabase
+                .from('inventory_transactions')
+                .insert({
+                  inventory_item_id: ingredient.inventory_item_id,
+                  quantity_changed: -totalQuantity,
+                  reason: 'Order consumption',
+                  related_order_id: orderData.order_id,
+                  related_order_item_id: orderItemId,
+                });
+            }
+          }
+        }
+      }
+
+      // Handle toppings - these also consume inventory
+      if (item.options.toppings && Array.isArray(item.options.toppings) && item.options.toppings.length > 0) {
+        // Find inventory items that match topping names
+        const { data: toppingItems } = await supabase
+          .from('inventory_items')
+          .select('inventory_item_id, name')
+          .in('name', item.options.toppings);
+
+        if (toppingItems) {
+          for (const topping of toppingItems) {
+            // Each topping typically uses a small amount (e.g., 0.1 units per serving)
+            const toppingQuantity = 0.1 * item.quantity;
+            
+            const { data: currentInventory } = await supabase
+              .from('inventory_items')
+              .select('on_hand_quantity')
+              .eq('inventory_item_id', topping.inventory_item_id)
+              .single();
+
+            if (currentInventory) {
+              const newQuantity = Math.max(0, parseFloat(currentInventory.on_hand_quantity.toString()) - toppingQuantity);
+              
+              await supabase
+                .from('inventory_items')
+                .update({ on_hand_quantity: newQuantity })
+                .eq('inventory_item_id', topping.inventory_item_id);
+
+              await supabase
+                .from('inventory_transactions')
+                .insert({
+                  inventory_item_id: topping.inventory_item_id,
+                  quantity_changed: -toppingQuantity,
+                  reason: 'Topping consumption',
+                  related_order_id: orderData.order_id,
+                  related_order_item_id: orderItemId,
+                });
+            }
+          }
+        }
+      }
+
+      // Handle size-based items (cups, bags, etc.) - these are generic items but still need to be tracked
+      // Note: We still track these for inventory purposes, but they shouldn't be selectable as ingredients
+      const size = item.options.size || 'Medium';
+      // Each order item needs a cup/container
+      const { data: containerItems } = await supabase
+        .from('inventory_items')
+        .select('inventory_item_id, name')
+        .or('name.ilike.%cup%,name.ilike.%bag%,name.ilike.%container%')
+        .limit(1);
+
+      if (containerItems && containerItems.length > 0) {
+        const container = containerItems[0];
+        const containerQuantity = item.quantity;
+        
+        const { data: currentInventory } = await supabase
+          .from('inventory_items')
+          .select('on_hand_quantity')
+          .eq('inventory_item_id', container.inventory_item_id)
+          .single();
+
+        if (currentInventory) {
+          const newQuantity = Math.max(0, parseFloat(currentInventory.on_hand_quantity.toString()) - containerQuantity);
+          
+          await supabase
+            .from('inventory_items')
+            .update({ on_hand_quantity: newQuantity })
+            .eq('inventory_item_id', container.inventory_item_id);
+
+          await supabase
+            .from('inventory_transactions')
+            .insert({
+              inventory_item_id: container.inventory_item_id,
+              quantity_changed: -containerQuantity,
+              reason: 'Container consumption',
+              related_order_id: orderData.order_id,
+              related_order_item_id: orderItemId,
+            });
+        }
       }
 
       orderItems.push({
@@ -1993,6 +2131,97 @@ export const api = {
   },
 
   /**
+   * Creates a new inventory item
+   * @param item - Inventory item data to create
+   * @returns Created inventory item
+   * @throws Error if creation fails
+   */
+  async createInventoryItem(item: {
+    name: string;
+    sku?: string;
+    unit: string;
+    onHandQuantity?: number;
+    reorderPoint?: number;
+    costPerUnit?: number;
+  }): Promise<InventoryItem> {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .insert({
+        name: item.name,
+        sku: item.sku || null,
+        unit: item.unit,
+        on_hand_quantity: item.onHandQuantity || 0,
+        reorder_point: item.reorderPoint || 0,
+        cost_per_unit: item.costPerUnit || 0,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create inventory item: ${error.message}`);
+
+    return {
+      inventoryId: data.inventory_item_id.toString(),
+      sku: data.sku || '',
+      name: data.name,
+      unit: data.unit || 'each',
+      onHandQuantity: parseFloat(data.on_hand_quantity.toString()),
+      servingsPerUnit: parseFloat((data.servings_per_unit || 1).toString()),
+      reorderPoint: parseFloat((data.reorder_point || 0).toString()),
+      costPerUnit: parseFloat((data.cost_per_unit || 0).toString()),
+      lastReceivedAt: data.last_received_at || null,
+    };
+  },
+
+  /**
+   * Gets menu items that use a specific inventory item as an ingredient
+   * @param inventoryItemId - Inventory item ID to check
+   * @returns Array of menu items that use this ingredient
+   */
+  async getMenuItemsUsingIngredient(inventoryItemId: string): Promise<Array<{ menuItemId: string; menuItemName: string; category: string }>> {
+    const { data, error } = await supabase
+      .from('menu_item_ingredients')
+      .select(`
+        menu_item_id,
+        menu_items (
+          menu_item_id,
+          name,
+          category
+        )
+      `)
+      .eq('inventory_item_id', parseInt(inventoryItemId));
+
+    if (error) throw new Error(`Failed to check ingredient usage: ${error.message}`);
+
+    return (data || []).map((item: any) => ({
+      menuItemId: item.menu_item_id.toString(),
+      menuItemName: item.menu_items?.name || 'Unknown',
+      category: item.menu_items?.category || 'Uncategorized',
+    }));
+  },
+
+  /**
+   * Deletes an inventory item
+   * Note: Should check for usage first using getMenuItemsUsingIngredient
+   * @param id - Inventory item ID to delete
+   * @throws Error if deletion fails or item is in use
+   */
+  async deleteInventoryItem(id: string): Promise<void> {
+    // First check if it's used in any menu items
+    const menuItems = await this.getMenuItemsUsingIngredient(id);
+    if (menuItems.length > 0) {
+      const itemNames = menuItems.map(mi => mi.menuItemName).join(', ');
+      throw new Error(`Cannot delete inventory item: It is used by ${menuItems.length} menu item(s): ${itemNames}. Please remove it from those menu items first.`);
+    }
+
+    const { error } = await supabase
+      .from('inventory_items')
+      .delete()
+      .eq('inventory_item_id', parseInt(id));
+
+    if (error) throw new Error(`Failed to delete inventory item: ${error.message}`);
+  },
+
+  /**
    * Fetches all employees (users with non-customer roles)
    * Includes role information via database join
    * @returns Array of employees sorted by creation date (newest first)
@@ -2716,5 +2945,181 @@ export const api = {
       xReport,
       zReport,
     };
+  },
+
+  /**
+   * Gets all ingredients for a menu item
+   * @param menuItemId - Menu item ID
+   * @returns Array of ingredients with inventory details
+   */
+  async getMenuItemIngredients(menuItemId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    quantityPerServing: number;
+    unit: string;
+  }>> {
+    const { data, error } = await supabase
+      .from('menu_item_ingredients')
+      .select(`
+        inventory_item_id,
+        quantity_per_serving,
+        inventory_items (
+          inventory_item_id,
+          name,
+          unit
+        )
+      `)
+      .eq('menu_item_id', parseInt(menuItemId));
+
+    if (error) throw new Error(`Failed to fetch menu item ingredients: ${error.message}`);
+
+    return (data || []).map((item: any) => ({
+      inventoryItemId: item.inventory_item_id.toString(),
+      inventoryItemName: item.inventory_items?.name || 'Unknown',
+      quantityPerServing: parseFloat(item.quantity_per_serving.toString()),
+      unit: item.inventory_items?.unit || '',
+    }));
+  },
+
+  /**
+   * Sets ingredients for a menu item (replaces all existing)
+   * @param menuItemId - Menu item ID
+   * @param ingredients - Array of ingredients with quantities
+   */
+  async setMenuItemIngredients(
+    menuItemId: string,
+    ingredients: Array<{ inventoryItemId: string; quantityPerServing: number }>
+  ): Promise<void> {
+    // Delete existing ingredients
+    const { error: deleteError } = await supabase
+      .from('menu_item_ingredients')
+      .delete()
+      .eq('menu_item_id', parseInt(menuItemId));
+
+    if (deleteError) throw new Error(`Failed to delete existing ingredients: ${deleteError.message}`);
+
+    // Insert new ingredients
+    if (ingredients.length > 0) {
+      const insertData = ingredients.map(ing => ({
+        menu_item_id: parseInt(menuItemId),
+        inventory_item_id: parseInt(ing.inventoryItemId),
+        quantity_per_serving: ing.quantityPerServing,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('menu_item_ingredients')
+        .insert(insertData);
+
+      if (insertError) throw new Error(`Failed to set menu item ingredients: ${insertError.message}`);
+    }
+  },
+
+  /**
+   * Checks if an inventory item is a generic item (bags, cups, toppings, etc.)
+   * These should not be selectable as ingredients for menu items
+   * @param inventoryItem - Inventory item to check
+   * @returns true if it's a generic item
+   */
+  isGenericInventoryItem(inventoryItem: InventoryItem): boolean {
+    const name = inventoryItem.name.toLowerCase();
+    const genericKeywords = [
+      'bag', 'bags',
+      'cup', 'cups',
+      'container', 'containers',
+      'lid', 'lids',
+      'straw', 'straws',
+      'topping', 'toppings',
+      'wrapper', 'wrappers',
+      'napkin', 'napkins',
+      'sleeve', 'sleeves',
+    ];
+    return genericKeywords.some(keyword => name.includes(keyword));
+  },
+
+  /**
+   * Gets inventory item usage statistics for a date range
+   * Aggregates consumption data from inventory_transactions
+   * @param options - Date range options
+   * @returns Array of inventory usage metrics
+   */
+  async getInventoryUsageAnalytics(options?: { type?: '24h' | '7d' | '30d' | 'custom'; from?: string; to?: string }): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    unit: string;
+    totalQuantityUsed: number;
+    transactionCount: number;
+    averagePerTransaction: number;
+    costOfUsage: number;
+  }>> {
+    const range = buildReportRange(options?.type, options?.from, options?.to);
+
+    // Get all inventory transactions in the date range
+    const { data: transactions, error: transactionsError } = await supabase
+      .from('inventory_transactions')
+      .select(`
+        inventory_item_id,
+        quantity_changed,
+        inventory_items (
+          inventory_item_id,
+          name,
+          unit,
+          cost_per_unit
+        )
+      `)
+      .lt('quantity_changed', 0) // Only consumption (negative values)
+      .gte('performed_at', range.start)
+      .lte('performed_at', range.end);
+
+    if (transactionsError) {
+      throw new Error(`Failed to fetch inventory usage: ${transactionsError.message}`);
+    }
+
+    // Aggregate by inventory item
+    const usageMap = new Map<string, {
+      inventoryItemId: string;
+      inventoryItemName: string;
+      unit: string;
+      costPerUnit: number;
+      totalQuantityUsed: number;
+      transactionCount: number;
+    }>();
+
+    (transactions || []).forEach((tx: any) => {
+      const itemId = tx.inventory_item_id.toString();
+      const quantityUsed = Math.abs(parseFloat(tx.quantity_changed.toString()));
+      const inventoryItem = tx.inventory_items;
+
+      if (!inventoryItem) return;
+
+      const existing = usageMap.get(itemId) || {
+        inventoryItemId: itemId,
+        inventoryItemName: inventoryItem.name || 'Unknown',
+        unit: inventoryItem.unit || '',
+        costPerUnit: parseFloat((inventoryItem.cost_per_unit || 0).toString()),
+        totalQuantityUsed: 0,
+        transactionCount: 0,
+      };
+
+      usageMap.set(itemId, {
+        ...existing,
+        totalQuantityUsed: existing.totalQuantityUsed + quantityUsed,
+        transactionCount: existing.transactionCount + 1,
+      });
+    });
+
+    // Convert to array and calculate additional metrics
+    return Array.from(usageMap.values())
+      .map(item => ({
+        inventoryItemId: item.inventoryItemId,
+        inventoryItemName: item.inventoryItemName,
+        unit: item.unit,
+        totalQuantityUsed: item.totalQuantityUsed,
+        transactionCount: item.transactionCount,
+        averagePerTransaction: item.transactionCount > 0 
+          ? item.totalQuantityUsed / item.transactionCount 
+          : 0,
+        costOfUsage: item.totalQuantityUsed * item.costPerUnit,
+      }))
+      .sort((a, b) => b.totalQuantityUsed - a.totalQuantityUsed);
   },
 };
