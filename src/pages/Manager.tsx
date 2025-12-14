@@ -148,6 +148,18 @@ export default function Manager() {
         try {
             const data = await api.getLowStock();
             setLowStock(data);
+            
+            // When low stock items are detected, check and update menu items
+            // This ensures menu items using low stock ingredients are set to inactive
+            if (data.length > 0) {
+                try {
+                    await api.checkInventoryAndUpdateMenuItems();
+                    // Reload menu to reflect any changes
+                    await loadMenu();
+                } catch (error: any) {
+                    console.error('Failed to check inventory and update menu items:', error);
+                }
+            }
         } catch (error: any) {
             console.error('Failed to load low stock:', error);
         }

@@ -103,6 +103,10 @@ export const Checkout = ({ onBack, onComplete, isSubmitting = false }: CheckoutP
   };
 
   const handleComplete = () => {
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      return;
+    }
     onComplete(paymentMethod, appliedPromoCode);
   };
 

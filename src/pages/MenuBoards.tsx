@@ -10,13 +10,34 @@ export default function MenuBoards() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemsContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    api.getMenu().then((data) => {
+  const loadMenu = async () => {
+    try {
+      const data = await api.getMenu();
       const activeItems = data.filter((item) => item.active);
       setMenu(activeItems);
       const cats = Array.from(new Set(activeItems.map((item) => item.category)));
       setCategories(cats);
-    });
+    } catch (error) {
+      console.error('Failed to load menu:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadMenu();
+    
+    // Refresh menu every 30 seconds to reflect changes from manager
+    const interval = setInterval(loadMenu, 30000);
+    
+    // Also refresh when window regains focus
+    const handleFocus = () => {
+      loadMenu();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Group menu items by category

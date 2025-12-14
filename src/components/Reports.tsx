@@ -560,7 +560,6 @@ export default function Reports() {
                             <h2 className="text-2xl font-bold">X-Report (Snapshot)</h2>
                             <p className="text-sm text-muted-foreground mt-2">
                                 Real-time summary of activity for the selected period. 
-                                Can be run multiple times without resetting counters.
                             </p>
                         </div>
 

@@ -90,6 +90,7 @@ export default function Kiosk() {
     const [isTranslating, setIsTranslating] = useState(false);
     const [editContext, setEditContext] = useState<{ index: number; item: CartItem; returnView: View } | null>(null);
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+    const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
     const pendingNavigation = useRef<(() => void) | null>(null);
     const editingInitialOptions = editContext?.item.options;
     const editingInitialQuantity = editContext?.item.quantity ?? 1;
@@ -194,24 +195,41 @@ export default function Kiosk() {
         };
     }, [categories, language]);
 
-    useEffect(() => {
-        api.getMenu()
-            .then((data) => {
-                setMenu(data);
-                const cats = Array.from(new Set(data.map((item) => item.category)));
-                setCategories(cats);
-            })
-            .catch(async (error) => {
-                console.error('Failed to load menu:', error);
-                const title = language !== 'en'
-                    ? await translateText('Failed to load menu', language, 'en')
-                    : 'Failed to load menu';
-                toast({
-                    title,
-                    description: error.message,
-                    variant: 'destructive',
-                });
+    const loadMenu = async () => {
+        try {
+            const data = await api.getMenu();
+            setMenu(data);
+            const cats = Array.from(new Set(data.map((item) => item.category)));
+            setCategories(cats);
+        } catch (error: any) {
+            console.error('Failed to load menu:', error);
+            const title = language !== 'en'
+                ? await translateText('Failed to load menu', language, 'en')
+                : 'Failed to load menu';
+            toast({
+                title,
+                description: error.message,
+                variant: 'destructive',
             });
+        }
+    };
+
+    useEffect(() => {
+        loadMenu();
+        
+        // Refresh menu every 30 seconds to reflect changes from manager
+        const interval = setInterval(loadMenu, 30000);
+        
+        // Also refresh when window regains focus
+        const handleFocus = () => {
+            loadMenu();
+        };
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [toast, language]);
 
     // Build suggested items (top sellers if available, otherwise featured fallbacks)
@@ -521,6 +539,12 @@ export default function Kiosk() {
     };
 
     const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null) => {
+        // Prevent duplicate submissions
+        if (isSubmittingOrder) {
+            return;
+        }
+
+        setIsSubmittingOrder(true);
         try {
             const cartItems = useCartStore.getState().items;
             const subtotal = getTotal();
@@ -576,6 +600,8 @@ export default function Kiosk() {
                 description: error?.message || t('pleaseTryAgain'),
                 variant: 'destructive',
             });
+        } finally {
+            setIsSubmittingOrder(false);
         }
     };
 
@@ -892,6 +918,7 @@ export default function Kiosk() {
                 <Checkout
                     onBack={() => setView('cartReview')}
                     onComplete={handleCompleteOrder}
+                    isSubmitting={isSubmittingOrder}
                 />
             )}
 

@@ -816,6 +816,12 @@ export const api = {
       throw new Error(`Failed to update order totals: ${updateError.message}`);
     }
 
+    // Check inventory and update menu items (set inactive if ingredients run out)
+    // This is done asynchronously so it doesn't block the order response
+    this.checkInventoryAndUpdateMenuItems().catch((error) => {
+      console.error('Failed to check inventory and update menu items:', error);
+    });
+
     // Fetch menu item names for response
     const menuItemIds = order.items.map((item) => parseInt(item.menuItemId));
     const { data: menuItems } = await supabase
@@ -2144,6 +2150,15 @@ export const api = {
       .eq('inventory_item_id', parseInt(id));
 
     if (error) throw new Error(`Failed to update inventory item: ${error.message}`);
+
+    // If quantity was updated, check inventory and update menu items
+    // This ensures menu items are set inactive if ingredients run out
+    if (updates.onHandQuantity !== undefined) {
+      // Run asynchronously so it doesn't block the update response
+      this.checkInventoryAndUpdateMenuItems().catch((error) => {
+        console.error('Failed to check inventory and update menu items:', error);
+      });
+    }
   },
 
   /**
@@ -3028,6 +3043,12 @@ export const api = {
 
       if (insertError) throw new Error(`Failed to set menu item ingredients: ${insertError.message}`);
     }
+
+    // After updating ingredients, check inventory and update menu item status
+    // This ensures the menu item is set inactive if ingredients are insufficient
+    this.checkInventoryAndUpdateMenuItems().catch((error) => {
+      console.error('Failed to check inventory and update menu items:', error);
+    });
   },
 
   /**
@@ -3301,5 +3322,143 @@ export const api = {
         createdAt: review.created_at,
       };
     });
+  },
+
+  /**
+   * Checks inventory for all menu items and automatically sets them to inactive
+   * if any required ingredient has inventory at or below the reorder point (low stock)
+   * This should be called after orders are placed or inventory is updated
+   * @returns Number of menu items that were set to inactive
+   */
+  async checkInventoryAndUpdateMenuItems(): Promise<number> {
+    // Get all menu items - try with 'active' column first, fallback to 'is_available'
+    let { data: allMenuItems, error: menuError } = await supabase
+      .from('menu_items')
+      .select('menu_item_id, active');
+
+    // If 'active' column doesn't exist, try 'is_available'
+    if (menuError && (menuError.message?.includes('column') || menuError.message?.includes('does not exist'))) {
+      const fallbackQuery = await supabase
+        .from('menu_items')
+        .select('menu_item_id, is_available');
+      
+      if (!fallbackQuery.error && fallbackQuery.data) {
+        allMenuItems = fallbackQuery.data.map((item: any) => ({
+          menu_item_id: item.menu_item_id,
+          active: item.is_available !== undefined ? item.is_available : true,
+        }));
+        menuError = null;
+      }
+    }
+
+    if (menuError) {
+      console.error('Failed to fetch menu items for inventory check:', menuError);
+      return 0;
+    }
+
+    if (!allMenuItems || allMenuItems.length === 0) {
+      return 0;
+    }
+
+    let itemsSetToInactive = 0;
+    let itemsReactivated = 0;
+
+    // Check each menu item
+    for (const menuItem of allMenuItems) {
+      // Get ingredients for this menu item
+      const { data: ingredients, error: ingredientsError } = await supabase
+        .from('menu_item_ingredients')
+        .select('inventory_item_id, quantity_per_serving')
+        .eq('menu_item_id', menuItem.menu_item_id);
+
+      if (ingredientsError || !ingredients || ingredients.length === 0) {
+        // If no ingredients are linked, skip this item (can't determine availability)
+        continue;
+      }
+
+      // Check if all ingredients have sufficient inventory
+      let hasInsufficientInventory = false;
+      let lowStockIngredientName = '';
+
+      for (const ingredient of ingredients) {
+        // Get current inventory and reorder point for this ingredient
+        const { data: inventoryItem, error: inventoryError } = await supabase
+          .from('inventory_items')
+          .select('inventory_item_id, name, on_hand_quantity, reorder_point')
+          .eq('inventory_item_id', ingredient.inventory_item_id)
+          .single();
+
+        if (inventoryError || !inventoryItem) {
+          // If we can't find the inventory item, assume insufficient
+          hasInsufficientInventory = true;
+          console.warn(`Inventory item ${ingredient.inventory_item_id} not found for menu item ${menuItem.menu_item_id}`);
+          break;
+        }
+
+        // Check if inventory is at or below the reorder point (low stock)
+        const quantity = parseFloat(inventoryItem.on_hand_quantity?.toString() || '0');
+        const reorderPoint = parseFloat(inventoryItem.reorder_point?.toString() || '0');
+        
+        // Set item inactive if inventory is at or below reorder point (matching low stock definition)
+        if (quantity <= reorderPoint) {
+          hasInsufficientInventory = true;
+          lowStockIngredientName = inventoryItem.name || 'Unknown';
+          console.log(`Menu item ${menuItem.menu_item_id} has low stock ingredient: ${lowStockIngredientName} (${quantity} <= ${reorderPoint})`);
+          break;
+        }
+      }
+
+      // Update menu item active status if needed
+      if (hasInsufficientInventory && menuItem.active) {
+        // Try updating with 'active' column first
+        const { error: updateError } = await supabase
+          .from('menu_items')
+          .update({ active: false })
+          .eq('menu_item_id', menuItem.menu_item_id);
+
+        if (updateError) {
+          // If 'active' column doesn't exist, try 'is_available'
+          const { error: updateError2 } = await supabase
+            .from('menu_items')
+            .update({ is_available: false })
+            .eq('menu_item_id', menuItem.menu_item_id);
+
+          if (updateError2) {
+            console.warn(`Failed to update menu item ${menuItem.menu_item_id} to inactive:`, updateError2);
+          } else {
+            itemsSetToInactive++;
+          }
+        } else {
+          itemsSetToInactive++;
+        }
+      } else if (!hasInsufficientInventory && !menuItem.active) {
+        // If inventory is sufficient again, reactivate the item
+        // Try updating with 'active' column first
+        const { error: updateError } = await supabase
+          .from('menu_items')
+          .update({ active: true })
+          .eq('menu_item_id', menuItem.menu_item_id);
+
+        if (updateError) {
+          // If 'active' column doesn't exist, try 'is_available'
+          const { error: updateError2 } = await supabase
+            .from('menu_items')
+            .update({ is_available: true })
+            .eq('menu_item_id', menuItem.menu_item_id);
+          
+          if (!updateError2) {
+            itemsReactivated++;
+          }
+        } else {
+          itemsReactivated++;
+        }
+      }
+    }
+
+    if (itemsSetToInactive > 0 || itemsReactivated > 0) {
+      console.log(`Inventory check complete: ${itemsSetToInactive} items set to inactive, ${itemsReactivated} items reactivated`);
+    }
+
+    return itemsSetToInactive;
   },
 };

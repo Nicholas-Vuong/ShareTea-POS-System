@@ -5,13 +5,14 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface CashierCheckoutProps {
   onBack: () => void;
   onComplete: (paymentMethod: string, promoCode: string | null, customerId: string | undefined) => void;
+  isSubmitting?: boolean;
 }
 
 // Simple promo code validation
@@ -24,7 +25,7 @@ const validatePromoCode = (code: string): number => {
   return promoCodes[code.toUpperCase()] || 0;
 };
 
-export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) => {
+export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: CashierCheckoutProps) => {
   const { items, getTotal } = useCartStore();
   const { toast } = useToast();
 
@@ -134,6 +135,11 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
   };
 
   const handleComplete = async () => {
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      return;
+    }
+
     // Email is required for customer lookup/creation
     if (!customerEmail.trim()) {
       toast({
@@ -378,10 +384,18 @@ export const CashierCheckout = ({ onBack, onComplete }: CashierCheckoutProps) =>
               disabled={
                 items.length === 0 || 
                 !customerEmail.trim() || 
-                isLookingUpCustomer
+                isLookingUpCustomer ||
+                isSubmitting
               }
             >
-              Complete Order
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                'Complete Order'
+              )}
             </Button>
             {!customerEmail.trim() && (
               <p className="text-sm text-muted-foreground mt-2 text-center">

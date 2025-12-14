@@ -71,6 +71,7 @@ export default function Cashier() {
     promoCode: string | null;
   } | null>(null);
   const { addItem, clearCart, items, getTotal, updateItemByIndex } = useCartStore();
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const { toast } = useToast();
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
@@ -82,22 +83,41 @@ export default function Cashier() {
   const editingInitialQuantity = editContext?.item.quantity ?? 1;
   const isEditingItem = Boolean(editContext);
 
-  useEffect(() => {
-    api.getMenu()
-      .then((data) => {
-        setMenu(data);
-        const cats = Array.from(new Set(data.map((item) => item.category)));
-        setCategories(cats);
-        setSelectedCategory(cats[0] || '');
-      })
-      .catch((error) => {
-        console.error('Failed to load menu:', error);
-        toast({
-          title: 'Failed to load menu',
-          description: error.message,
-          variant: 'destructive',
-        });
+  const loadMenu = async () => {
+    try {
+      const data = await api.getMenu();
+      setMenu(data);
+      const cats = Array.from(new Set(data.map((item) => item.category)));
+      setCategories(cats);
+      if (!selectedCategory && cats.length > 0) {
+        setSelectedCategory(cats[0]);
+      }
+    } catch (error: any) {
+      console.error('Failed to load menu:', error);
+      toast({
+        title: 'Failed to load menu',
+        description: error.message,
+        variant: 'destructive',
       });
+    }
+  };
+
+  useEffect(() => {
+    loadMenu();
+    
+    // Refresh menu every 30 seconds to reflect changes from manager
+    const interval = setInterval(loadMenu, 30000);
+    
+    // Also refresh when window regains focus
+    const handleFocus = () => {
+      loadMenu();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [toast]);
 
   /**
@@ -255,6 +275,12 @@ export default function Cashier() {
    * @param customerId - Optional customer ID if customer account exists
    */
   const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null, customerId?: string) => {
+    // Prevent duplicate submissions
+    if (isSubmittingOrder) {
+      return;
+    }
+
+    setIsSubmittingOrder(true);
     try {
       const cartItems = useCartStore.getState().items;
       const subtotal = getTotal();
@@ -325,6 +351,8 @@ export default function Cashier() {
         description: error?.message || 'Please try again',
         variant: 'destructive',
       });
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -398,6 +426,7 @@ export default function Cashier() {
             setView('cartReview');
           }}
           onComplete={handleCompleteOrder}
+          isSubmitting={isSubmittingOrder}
         />
         {cancelDialog}
       </div>
