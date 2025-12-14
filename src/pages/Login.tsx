@@ -434,6 +434,50 @@ export default function Login() {
         }
     };
 
+    const handleDeveloperLogin = async (role: 'Manager' | 'Cashier' | 'Barista' | 'Customer') => {
+        const username = role;
+        const password = `${role}@1`;
+
+        setLoading(true);
+        try {
+            const user = await api.login(username, password);
+            setUser({
+                userId: user.userId,
+                role: user.role,
+                email: user.email,
+            });
+
+            const title = language !== 'en' ? await translateText('Login successful', language, 'en') : 'Login successful';
+            const roleName = language !== 'en' && translatedRoles.length > 0
+                ? translatedRoles.find(r => r.roleName.toLowerCase() === user.role.toLowerCase())?.translatedName || user.role
+                : user.role;
+            const desc = language !== 'en'
+                ? await translateText('Welcome', language, 'en') + ` ${roleName}!`
+                : `Welcome ${roleName}!`;
+
+            toast({
+                title,
+                description: desc,
+            });
+
+            // Route based on role
+            routeByRole(user.role);
+        } catch (error: any) {
+            const title = language !== 'en' ? await translateText('Developer login failed', language, 'en') : 'Developer login failed';
+            const defaultDesc = `Failed to login as ${role}. Please ensure the developer account exists.`;
+            const desc = error.message
+                ? (language !== 'en' ? await translateText(error.message, language, 'en') : error.message)
+                : (language !== 'en' ? await translateText(defaultDesc, language, 'en') : defaultDesc);
+            toast({
+                title,
+                description: desc,
+                variant: 'destructive',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Get translated role name for display (always returns a string)
     const getTranslatedRoleName = (roleName: string): string => {
         if (!roleName) return '';
@@ -444,7 +488,7 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/20 via-background to-secondary/20 p-4">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/20 via-background to-secondary/20 p-4">
             <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Left side: Sign In / Sign Up */}
                 <Card className="p-8 space-y-6">
@@ -737,6 +781,53 @@ export default function Login() {
                     >
                         {t('Continue as Guest')}
                     </Button>
+                </Card>
+            </div>
+
+            {/* Developer Login Section */}
+            <div className="w-full max-w-6xl mt-8">
+                <Card className="p-4">
+                    <div className="text-center mb-4">
+                        <h3 className="text-lg font-semibold text-muted-foreground">Developer Login</h3>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <Button
+                            onClick={() => handleDeveloperLogin('Customer')}
+                            disabled={loading}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                        >
+                            Customer
+                        </Button>
+                        <Button
+                            onClick={() => handleDeveloperLogin('Manager')}
+                            disabled={loading}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                        >
+                            Manager
+                        </Button>
+                        <Button
+                            onClick={() => handleDeveloperLogin('Cashier')}
+                            disabled={loading}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                        >
+                            Cashier
+                        </Button>
+                        <Button
+                            onClick={() => handleDeveloperLogin('Barista')}
+                            disabled={loading}
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                        >
+                            Barista
+                        </Button>
+                    </div>
                 </Card>
             </div>
         </div>

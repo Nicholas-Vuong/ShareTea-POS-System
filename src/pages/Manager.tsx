@@ -4,6 +4,7 @@ import {
     LowStockItem,
     InventoryItem,
     Employee,
+    Review,
     api,
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, Plus, Edit, Trash2, Save, X } from 'lucide-react';
+import { LogOut, Plus, Edit, Trash2, Save, X, Star } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -68,6 +69,15 @@ export default function Manager() {
     const [newInventoryItem, setNewInventoryItem] = useState({ name: '', sku: '', unit: 'each', onHandQuantity: 0, reorderPoint: 0, costPerUnit: 0 });
     const [deletingInventoryId, setDeletingInventoryId] = useState<string | null>(null);
     const [inventoryUsageWarning, setInventoryUsageWarning] = useState<Array<{ menuItemId: string; menuItemName: string; category: string }>>([]);
+    const [reviews, setReviews] = useState<Review[]>([]);
+    const [reviewsLoading, setReviewsLoading] = useState(false);
+    const [reviewFilters, setReviewFilters] = useState({
+        timeRange: 'all' as 'all' | '24h' | '7d' | '30d' | 'custom',
+        minRating: 0,
+        maxRating: 5,
+        customFromDate: '',
+        customToDate: '',
+    });
     const logout = useAuthStore((state) => state.logout);
     const navigate = useNavigate();
     const { toast } = useToast();
@@ -84,8 +94,17 @@ export default function Manager() {
             loadRestock();
         } else if (activeTab === 'employees') {
             loadEmployees();
+        } else if (activeTab === 'reviews') {
+            loadReviews();
         }
     }, [activeTab]);
+
+    // Reload reviews when filters change (only if reviews tab is active)
+    useEffect(() => {
+        if (activeTab === 'reviews') {
+            loadReviews();
+        }
+    }, [reviewFilters]);
 
     const loadMenu = async () => {
         try {
@@ -144,6 +163,56 @@ export default function Manager() {
                 description: error.message,
                 variant: 'destructive',
             });
+        }
+    };
+
+    const loadReviews = async () => {
+        setReviewsLoading(true);
+        try {
+            // Calculate date range based on filter
+            let fromDate: string | undefined;
+            let toDate: string | undefined;
+
+            if (reviewFilters.timeRange === 'custom') {
+                fromDate = reviewFilters.customFromDate || undefined;
+                toDate = reviewFilters.customToDate || undefined;
+            } else if (reviewFilters.timeRange !== 'all') {
+                const now = new Date();
+                const to = now.toISOString();
+                let from: Date;
+
+                switch (reviewFilters.timeRange) {
+                    case '24h':
+                        from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                        break;
+                    case '7d':
+                        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        break;
+                    case '30d':
+                        from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        break;
+                    default:
+                        from = new Date(0);
+                }
+                fromDate = from.toISOString();
+                toDate = to;
+            }
+
+            const data = await api.getReviews({
+                fromDate,
+                toDate,
+                minRating: reviewFilters.minRating > 0 ? reviewFilters.minRating : undefined,
+                maxRating: reviewFilters.maxRating < 5 ? reviewFilters.maxRating : undefined,
+            });
+            setReviews(data);
+        } catch (error: any) {
+            toast({
+                title: 'Error',
+                description: error.message,
+                variant: 'destructive',
+            });
+        } finally {
+            setReviewsLoading(false);
         }
     };
 
@@ -523,6 +592,9 @@ export default function Manager() {
                         </TabsTrigger>
                         <TabsTrigger value="visualizations" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
                             Sales Visualizations
+                        </TabsTrigger>
+                        <TabsTrigger value="reviews" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+                            Reviews
                         </TabsTrigger>
                     </TabsList>
 
@@ -1149,6 +1221,151 @@ export default function Manager() {
                     {/* Sales Visualizations Tab */}
                     <TabsContent value="visualizations" className="space-y-4">
                         <SalesVisualizations />
+                    </TabsContent>
+
+                    {/* Reviews Tab */}
+                    <TabsContent value="reviews" className="space-y-4">
+                        <Card className="p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold">Customer Reviews</h2>
+                            </div>
+
+                            {/* Filters */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                                <div>
+                                    <Label>Time Range</Label>
+                                    <Select
+                                        value={reviewFilters.timeRange}
+                                        onValueChange={(value: 'all' | '24h' | '7d' | '30d' | 'custom') => {
+                                            setReviewFilters({ ...reviewFilters, timeRange: value });
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Time</SelectItem>
+                                            <SelectItem value="24h">Last 24 Hours</SelectItem>
+                                            <SelectItem value="7d">Last 7 Days</SelectItem>
+                                            <SelectItem value="30d">Last 30 Days</SelectItem>
+                                            <SelectItem value="custom">Custom Range</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {reviewFilters.timeRange === 'custom' && (
+                                    <>
+                                        <div>
+                                            <Label>From Date</Label>
+                                            <Input
+                                                type="date"
+                                                value={reviewFilters.customFromDate}
+                                                onChange={(e) => setReviewFilters({ ...reviewFilters, customFromDate: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label>To Date</Label>
+                                            <Input
+                                                type="date"
+                                                value={reviewFilters.customToDate}
+                                                onChange={(e) => setReviewFilters({ ...reviewFilters, customToDate: e.target.value })}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                <div>
+                                    <Label>Min Rating</Label>
+                                    <Select
+                                        value={reviewFilters.minRating.toString()}
+                                        onValueChange={(value) => {
+                                            setReviewFilters({ ...reviewFilters, minRating: parseInt(value) });
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="0">All Ratings</SelectItem>
+                                            <SelectItem value="1">1+ Stars</SelectItem>
+                                            <SelectItem value="2">2+ Stars</SelectItem>
+                                            <SelectItem value="3">3+ Stars</SelectItem>
+                                            <SelectItem value="4">4+ Stars</SelectItem>
+                                            <SelectItem value="5">5 Stars Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div>
+                                    <Label>Max Rating</Label>
+                                    <Select
+                                        value={reviewFilters.maxRating.toString()}
+                                        onValueChange={(value) => {
+                                            setReviewFilters({ ...reviewFilters, maxRating: parseInt(value) });
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="5">All Ratings</SelectItem>
+                                            <SelectItem value="4">Up to 4 Stars</SelectItem>
+                                            <SelectItem value="3">Up to 3 Stars</SelectItem>
+                                            <SelectItem value="2">Up to 2 Stars</SelectItem>
+                                            <SelectItem value="1">1 Star Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* Reviews List */}
+                            {reviewsLoading ? (
+                                <div className="text-center py-12">
+                                    <p className="text-muted-foreground">Loading reviews...</p>
+                                </div>
+                            ) : reviews.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <p className="text-muted-foreground">No reviews found</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {reviews.map((review) => (
+                                        <Card key={review.reviewId} className="p-4">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <div className="flex">
+                                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                                <Star
+                                                                    key={star}
+                                                                    className={`h-4 w-4 ${
+                                                                        star <= review.rating
+                                                                            ? 'fill-yellow-400 text-yellow-400'
+                                                                            : 'text-gray-300'
+                                                                    }`}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <span className="text-sm text-muted-foreground">
+                                                            Order #{review.orderId.slice(-6)}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm font-medium">
+                                                        {review.customerName || 'Anonymous Customer'}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {new Date(review.createdAt).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {review.comment && (
+                                                <p className="text-sm text-muted-foreground mt-2">{review.comment}</p>
+                                            )}
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
                     </TabsContent>
                 </Tabs>
             </div>

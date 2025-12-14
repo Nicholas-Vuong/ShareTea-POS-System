@@ -150,6 +150,22 @@ export interface TopItemMetric {
   orderCount: number;
 }
 
+export interface Review {
+  reviewId: string;
+  orderId: string;
+  customerId: string | null;
+  customerName: string | null;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface CreateReviewRequest {
+  orderId: string;
+  rating: number;
+  comment?: string | null;
+}
+
 export interface ProductUsageMetric {
   menuItemId: string;
   menuItemName: string;
@@ -3121,5 +3137,169 @@ export const api = {
         costOfUsage: item.totalQuantityUsed * item.costPerUnit,
       }))
       .sort((a, b) => b.totalQuantityUsed - a.totalQuantityUsed);
+  },
+
+  /**
+   * Creates a review for an order
+   * Links review to order and optionally to customer if they have an account
+   * @param review - Review data with orderId, rating, and optional comment
+   * @returns Created review with customer information if available
+   * @throws Error if order not found or review creation fails
+   */
+  async createReview(review: CreateReviewRequest): Promise<Review> {
+    // Validate rating
+    if (review.rating < 1 || review.rating > 5) {
+      throw new Error('Rating must be between 1 and 5');
+    }
+
+    // Get order to find customer_id
+    const orderIdNum = parseInt(review.orderId);
+    if (isNaN(orderIdNum)) {
+      throw new Error(`Invalid order ID: ${review.orderId}`);
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('order_id, customer_id')
+      .eq('order_id', orderIdNum)
+      .single();
+
+    if (orderError || !order) {
+      throw new Error(`Order not found: ${review.orderId}`);
+    }
+
+    // Check if review already exists for this order
+    const { data: existingReview } = await supabase
+      .from('reviews')
+      .select('review_id')
+      .eq('order_id', orderIdNum)
+      .maybeSingle();
+
+    if (existingReview) {
+      throw new Error('Review already exists for this order');
+    }
+
+    // Create review
+    const reviewInsert: any = {
+      order_id: orderIdNum,
+      rating: review.rating,
+      comment: review.comment?.trim() || null,
+    };
+
+    // Add customer_id if order has one
+    if (order.customer_id) {
+      reviewInsert.customer_id = order.customer_id;
+    }
+
+    const { data: reviewData, error: reviewError } = await supabase
+      .from('reviews')
+      .insert(reviewInsert)
+      .select('review_id, order_id, customer_id, rating, comment, created_at')
+      .single();
+
+    if (reviewError || !reviewData) {
+      throw new Error(`Failed to create review: ${reviewError?.message || 'Unknown error'}`);
+    }
+
+    // Get customer name if customer_id exists
+    let customerName: string | null = null;
+    if (reviewData.customer_id) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('first_name, last_name')
+        .eq('customer_id', reviewData.customer_id)
+        .maybeSingle();
+
+      if (customer) {
+        customerName = [customer.first_name, customer.last_name]
+          .filter(Boolean)
+          .join(' ') || null;
+      }
+    }
+
+    return {
+      reviewId: reviewData.review_id.toString(),
+      orderId: reviewData.order_id.toString(),
+      customerId: reviewData.customer_id?.toString() || null,
+      customerName,
+      rating: reviewData.rating,
+      comment: reviewData.comment,
+      createdAt: reviewData.created_at,
+    };
+  },
+
+  /**
+   * Fetches all reviews with optional filtering
+   * @param options - Filter options for time range and star rating
+   * @returns Array of reviews with customer information
+   */
+  async getReviews(options?: {
+    fromDate?: string;
+    toDate?: string;
+    minRating?: number;
+    maxRating?: number;
+  }): Promise<Review[]> {
+    let query = supabase
+      .from('reviews')
+      .select(`
+        review_id,
+        order_id,
+        customer_id,
+        rating,
+        comment,
+        created_at,
+        customers (
+          first_name,
+          last_name
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    // Apply date filters
+    if (options?.fromDate) {
+      query = query.gte('created_at', options.fromDate);
+    }
+    if (options?.toDate) {
+      query = query.lte('created_at', options.toDate);
+    }
+
+    // Apply rating filters
+    if (options?.minRating !== undefined) {
+      query = query.gte('rating', options.minRating);
+    }
+    if (options?.maxRating !== undefined) {
+      query = query.lte('rating', options.maxRating);
+    }
+
+    const { data: reviews, error: reviewsError } = await query;
+
+    if (reviewsError) {
+      throw new Error(`Failed to fetch reviews: ${reviewsError.message}`);
+    }
+
+    if (!reviews) {
+      return [];
+    }
+
+    // Transform to Review interface
+    return reviews.map((review: any) => {
+      const customer = review.customers as any;
+      let customerName: string | null = null;
+      if (customer) {
+        customerName = [customer.first_name, customer.last_name]
+          .filter(Boolean)
+          .join(' ') || null;
+      }
+
+      return {
+        reviewId: review.review_id.toString(),
+        orderId: review.order_id.toString(),
+        customerId: review.customer_id?.toString() || null,
+        customerName,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.created_at,
+      };
+    });
   },
 };
