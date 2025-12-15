@@ -305,8 +305,6 @@ export interface CreateOrderRequest {
   source: 'kiosk' | 'cashier';
   items: OrderItem[];
   paymentMethod?: string;
-  promoCode?: string | null;
-  discount?: number;
   customerId?: string;
 }
 
@@ -787,17 +785,13 @@ export const api = {
       });
     }
 
-    // Calculate discount if promo code provided
-    const discount = order.discount || 0;
-    const discountedSubtotal = subtotal - discount;
-    
     // Update order with totals
-    const tax = discountedSubtotal * 0.0825; // 8.25% tax (adjust as needed)
-    const total = discountedSubtotal + tax;
+    const tax = subtotal * 0.0825; // 8.25% tax (adjust as needed)
+    const total = subtotal + tax;
 
     const updateData: any = {
       subtotal,
-      discounts: discount,
+      discounts: 0,
       tax,
       total,
     };

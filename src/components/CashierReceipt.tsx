@@ -21,11 +21,9 @@ interface CashierReceiptProps {
   orderDate: string;
   items: OrderItem[];
   subtotal: number;
-  discount: number;
   tax: number;
   total: number;
   paymentMethod: string;
-  promoCode: string | null;
   onNewOrder: () => void;
 }
 
@@ -34,11 +32,9 @@ export const CashierReceipt = ({
   orderDate,
   items,
   subtotal,
-  discount,
   tax,
   total,
   paymentMethod,
-  promoCode,
   onNewOrder,
 }: CashierReceiptProps) => {
   const handlePrint = () => {
@@ -70,12 +66,6 @@ export const CashierReceipt = ({
                 <span className="text-muted-foreground">Payment Method</span>
                 <span className="capitalize">{paymentMethod}</span>
               </div>
-              {promoCode && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Promo Code</span>
-                  <span>{promoCode}</span>
-                </div>
-              )}
             </div>
 
             <Separator />
@@ -110,12 +100,6 @@ export const CashierReceipt = ({
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Discount</span>
-                  <span>-${discount.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span>Tax</span>
                 <span>${tax.toFixed(2)}</span>

@@ -64,11 +64,9 @@ export default function Cashier() {
       };
     }>;
     subtotal: number;
-    discount: number;
     tax: number;
     total: number;
     paymentMethod: string;
-    promoCode: string | null;
   } | null>(null);
   const { addItem, clearCart, items, getTotal, updateItemByIndex } = useCartStore();
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
@@ -269,12 +267,11 @@ export default function Cashier() {
 
   /**
    * Completes an order by creating it in the database
-   * Handles promo code validation, discount calculation, tax, and receipt generation
+   * Handles tax calculation and receipt generation
    * @param paymentMethod - Payment method used (cash, card, etc.)
-   * @param promoCode - Optional promo code for discount
    * @param customerId - Optional customer ID if customer account exists
    */
-  const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null, customerId?: string) => {
+  const handleCompleteOrder = async (paymentMethod: string, customerId?: string) => {
     // Prevent duplicate submissions
     if (isSubmittingOrder) {
       return;
@@ -285,19 +282,6 @@ export default function Cashier() {
       const cartItems = useCartStore.getState().items;
       const subtotal = getTotal();
       
-      // Calculate discount if promo code provided
-      // Hardcoded promo codes: SAVE10 (10%), SAVE20 (20%), WELCOME (15%)
-      let discount = 0;
-      if (promoCode) {
-        const promoDiscounts: Record<string, number> = {
-          'SAVE10': 0.10,
-          'SAVE20': 0.20,
-          'WELCOME': 0.15,
-        };
-        const discountPercent = promoDiscounts[promoCode.toUpperCase()] || 0;
-        discount = subtotal * discountPercent;
-      }
-      
       // Create order in database
       const order = await api.createOrder({
         source: 'cashier',
@@ -307,8 +291,6 @@ export default function Cashier() {
           options: item.options,
         })),
         paymentMethod,
-        promoCode,
-        discount,
         customerId: customerId,
       });
       
@@ -322,19 +304,17 @@ export default function Cashier() {
       }));
       
       // Calculate tax (8.25%) and final total
-      const tax = (subtotal - discount) * 0.0825;
-      const total = subtotal - discount + tax;
+      const tax = subtotal * 0.0825;
+      const total = subtotal + tax;
       
       setOrderData({
         orderId: order.orderId,
         orderDate: order.createdAt,
         items: receiptItems,
         subtotal,
-        discount,
         tax,
         total,
         paymentMethod,
-        promoCode,
       });
       
       setView('receipt');
@@ -448,11 +428,9 @@ export default function Cashier() {
           orderDate={orderData.orderDate}
           items={orderData.items}
           subtotal={orderData.subtotal}
-          discount={orderData.discount}
           tax={orderData.tax}
           total={orderData.total}
           paymentMethod={orderData.paymentMethod}
-          promoCode={orderData.promoCode}
           onNewOrder={handleNewOrder}
         />
         {cancelDialog}

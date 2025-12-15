@@ -11,29 +11,15 @@ import { useToast } from '@/hooks/use-toast';
 
 interface CashierCheckoutProps {
   onBack: () => void;
-  onComplete: (paymentMethod: string, promoCode: string | null, customerId: string | undefined) => void;
+  onComplete: (paymentMethod: string, customerId: string | undefined) => void;
   isSubmitting?: boolean;
 }
-
-// Simple promo code validation
-const validatePromoCode = (code: string): number => {
-  const promoCodes: Record<string, number> = {
-    'SAVE10': 0.10,
-    'SAVE20': 0.20,
-    'WELCOME': 0.15,
-  };
-  return promoCodes[code.toUpperCase()] || 0;
-};
 
 export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: CashierCheckoutProps) => {
   const { items, getTotal } = useCartStore();
   const { toast } = useToast();
 
   const [paymentMethod, setPaymentMethod] = useState('card');
-  const [promoCode, setPromoCode] = useState('');
-  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
-  const [discountPercent, setDiscountPercent] = useState(0);
-  const [promoError, setPromoError] = useState('');
 
   // Customer information
   const [customerEmail, setCustomerEmail] = useState('');
@@ -43,33 +29,8 @@ export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: Ca
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
 
   const subtotal = getTotal();
-  const discount = subtotal * discountPercent;
-  const tax = (subtotal - discount) * 0.0825;
-  const total = subtotal - discount + tax;
-
-  const handleApplyPromoCode = () => {
-    if (!promoCode.trim()) {
-      setPromoError('');
-      return;
-    }
-
-    const discount = validatePromoCode(promoCode);
-    if (discount > 0) {
-      setAppliedPromoCode(promoCode.toUpperCase());
-      setDiscountPercent(discount);
-      setPromoError('');
-      setPromoCode('');
-    } else {
-      setPromoError('Invalid promo code');
-    }
-  };
-
-  const handleRemovePromoCode = () => {
-    setAppliedPromoCode(null);
-    setDiscountPercent(0);
-    setPromoCode('');
-    setPromoError('');
-  };
+  const tax = subtotal * 0.0825;
+  const total = subtotal + tax;
 
   const handleLookupOrCreateCustomer = async () => {
     // Email is required for customer lookup/creation
@@ -196,7 +157,7 @@ export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: Ca
       }
     }
 
-    onComplete(paymentMethod, appliedPromoCode, finalCustomerId);
+    onComplete(paymentMethod, finalCustomerId);
   };
 
   return (
@@ -292,53 +253,6 @@ export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: Ca
                   </div>
                 </RadioGroup>
               </div>
-
-              {/* Promo Code */}
-              <div>
-                <Label className="text-lg font-semibold mb-3 block">Promo Code</Label>
-                {appliedPromoCode ? (
-                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <span className="flex-1 font-semibold">{appliedPromoCode}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRemovePromoCode}
-                      className="touch-target"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter promo code"
-                        value={promoCode}
-                        onChange={(e) => {
-                          setPromoCode(e.target.value);
-                          setPromoError('');
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            handleApplyPromoCode();
-                          }
-                        }}
-                        className="flex-1"
-                      />
-                      <Button
-                        onClick={handleApplyPromoCode}
-                        variant="outline"
-                        className="touch-target"
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                    {promoError && (
-                      <p className="text-sm text-destructive">{promoError}</p>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </Card>
 
@@ -361,12 +275,6 @@ export const CashierCheckout = ({ onBack, onComplete, isSubmitting = false }: Ca
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Discount</span>
-                  <span>-${discount.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span>Tax</span>
                 <span>${tax.toFixed(2)}</span>

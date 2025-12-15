@@ -102,20 +102,249 @@ All colors MUST be HSL.
   }
 
   .high-contrast {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 0%;
-    --primary: 210 100% 35%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 20%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 95%;
-    --muted-foreground: 0 0% 10%;
-    --accent: 330 100% 40%;
-    --accent-foreground: 0 0% 100%;
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 0%;
+    /* Windows High Contrast Dark Mode - Pure black background with white text and bright colors */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    
+    --primary: 200 100% 60%;
+    --primary-foreground: 0 0% 0%;
+    
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 0 0% 0%;
+    
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 100%;
+    
+    --accent: 300 100% 70%;
+    --accent-foreground: 0 0% 0%;
+    
+    --destructive: 0 100% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 120 100% 50%;
+    --success-foreground: 0 0% 0%;
+    
+    --warning: 60 100% 60%;
+    --warning-foreground: 0 0% 0%;
+    
+    --border: 0 0% 100%;
+    --input: 0 0% 0%;
+    --ring: 200 100% 60%;
+    
+    --card: 0 0% 0%;
+    --card-foreground: 0 0% 100%;
+    
+    --popover: 0 0% 0%;
+    --popover-foreground: 0 0% 100%;
+    
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 200 100% 60%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 100%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-border: 0 0% 100%;
+    --sidebar-ring: 200 100% 60%;
+  }
+  
+  /* Enhanced borders and focus indicators for high contrast dark mode */
+  .high-contrast * {
+    border-color: hsl(var(--border)) !important;
+  }
+  
+  .high-contrast body {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  .high-contrast button,
+  .high-contrast input,
+  .high-contrast select,
+  .high-contrast textarea,
+  .high-contrast [role="button"],
+  .high-contrast [role="tab"],
+  .high-contrast [role="menuitem"] {
+    border-width: 3px !important;
+    border-style: solid !important;
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  .high-contrast button:not([class*="bg-"]):not([class*="variant"]),
+  .high-contrast [role="button"]:not([class*="bg-"]):not([class*="variant"]) {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  .high-contrast button:focus-visible,
+  .high-contrast input:focus-visible,
+  .high-contrast select:focus-visible,
+  .high-contrast textarea:focus-visible,
+  .high-contrast [role="button"]:focus-visible {
+    outline: 4px solid hsl(var(--ring)) !important;
+    outline-offset: 3px !important;
+    border-color: hsl(var(--ring)) !important;
+  }
+  
+  .high-contrast table,
+  .high-contrast th,
+  .high-contrast td {
+    border: 3px solid hsl(var(--border)) !important;
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  .high-contrast th {
+    background-color: hsl(var(--muted)) !important;
+    font-weight: 700 !important;
+  }
+  
+  .high-contrast hr {
+    border: 3px solid hsl(var(--border)) !important;
+    border-top: none !important;
+    background-color: transparent !important;
+  }
+  
+  /* Override gradient backgrounds in high contrast mode - use solid black */
+  .high-contrast .bg-gradient-to-br,
+  .high-contrast .bg-gradient-to-r,
+  .high-contrast .bg-gradient-to-l,
+  .high-contrast .bg-gradient-to-t,
+  .high-contrast [class*="from-"],
+  .high-contrast [class*="to-"] {
+    background-image: none !important;
+    background-color: hsl(var(--card)) !important;
+    border: 3px solid hsl(var(--border)) !important;
+    color: hsl(var(--card-foreground)) !important;
+  }
+  
+  /* Override all background color classes to use dark background */
+  .high-contrast [class*="bg-"]:not([class*="bg-background"]):not([class*="bg-foreground"]):not([class*="bg-primary"]):not([class*="bg-secondary"]):not([class*="bg-accent"]):not([class*="bg-destructive"]):not([class*="bg-success"]):not([class*="bg-warning"]) {
+    background-color: hsl(var(--card)) !important;
+  }
+  
+  /* Ensure all text in high contrast is white */
+  .high-contrast .text-muted-foreground,
+  .high-contrast [class*="text-muted"],
+  .high-contrast [class*="text-slate"],
+  .high-contrast [class*="text-gray"],
+  .high-contrast [class*="text-zinc"] {
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  /* Make badges and status indicators more visible */
+  .high-contrast [class*="badge"],
+  .high-contrast [class*="Badge"] {
+    border: 3px solid hsl(var(--border)) !important;
+    font-weight: 700 !important;
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  /* Ensure icons have proper contrast - make them white */
+  .high-contrast svg {
+    stroke-width: 2.5 !important;
+    stroke: hsl(var(--foreground)) !important;
+  }
+  
+  .high-contrast svg[class*="text-"] {
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  /* Make links more visible with underlines */
+  .high-contrast a {
+    text-decoration: underline !important;
+    text-decoration-thickness: 3px !important;
+    color: hsl(var(--primary)) !important;
+  }
+  
+  .high-contrast a:focus-visible {
+    outline: 4px solid hsl(var(--ring)) !important;
+    outline-offset: 3px !important;
+  }
+  
+  /* Cards and containers */
+  .high-contrast [class*="card"],
+  .high-contrast [class*="Card"] {
+    background-color: hsl(var(--card)) !important;
+    color: hsl(var(--card-foreground)) !important;
+    border: 3px solid hsl(var(--border)) !important;
+  }
+  
+  /* Inputs and form elements */
+  .high-contrast input,
+  .high-contrast textarea,
+  .high-contrast select {
+    background-color: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  
+  /* Primary buttons should use primary color */
+  .high-contrast button[class*="bg-primary"],
+  .high-contrast [class*="variant"][class*="default"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+    border-color: hsl(var(--primary)) !important;
+  }
+  
+  /* Secondary buttons */
+  .high-contrast button[class*="bg-secondary"],
+  .high-contrast [class*="variant"][class*="secondary"] {
+    background-color: hsl(var(--secondary)) !important;
+    color: hsl(var(--secondary-foreground)) !important;
+    border-color: hsl(var(--secondary)) !important;
+  }
+  
+  /* Destructive buttons */
+  .high-contrast button[class*="bg-destructive"],
+  .high-contrast [class*="variant"][class*="destructive"] {
+    background-color: hsl(var(--destructive)) !important;
+    color: hsl(var(--destructive-foreground)) !important;
+    border-color: hsl(var(--destructive)) !important;
+  }
+  
+  /* Tabs */
+  .high-contrast [role="tab"],
+  .high-contrast [class*="tab"] {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    border: 3px solid hsl(var(--border)) !important;
+  }
+  
+  .high-contrast [role="tab"][aria-selected="true"],
+  .high-contrast [class*="tab"][class*="active"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+    border-color: hsl(var(--primary)) !important;
+  }
+  
+  /* Override any opacity or transparency */
+  .high-contrast [class*="opacity"] {
+    opacity: 1 !important;
+  }
+  
+  /* Ensure shadows don't interfere with contrast */
+  .high-contrast * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  /* Make sure all text is bold for maximum visibility */
+  .high-contrast p,
+  .high-contrast span,
+  .high-contrast div,
+  .high-contrast li {
+    font-weight: 500 !important;
+  }
+  
+  .high-contrast h1,
+  .high-contrast h2,
+  .high-contrast h3,
+  .high-contrast h4,
+  .high-contrast h5,
+  .high-contrast h6 {
+    font-weight: 700 !important;
+    color: hsl(var(--foreground)) !important;
   }
 }
 

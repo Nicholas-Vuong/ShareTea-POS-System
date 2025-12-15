@@ -538,7 +538,7 @@ export default function Kiosk() {
         setView('checkout');
     };
 
-    const handleCompleteOrder = async (paymentMethod: string, promoCode: string | null) => {
+    const handleCompleteOrder = async (paymentMethod: string) => {
         // Prevent duplicate submissions
         if (isSubmittingOrder) {
             return;
@@ -550,18 +550,6 @@ export default function Kiosk() {
             const subtotal = getTotal();
             const user = useAuthStore.getState().user;
 
-            // Calculate discount if promo code provided
-            let discount = 0;
-            if (promoCode) {
-                const promoDiscounts: Record<string, number> = {
-                    'SAVE10': 0.10,
-                    'SAVE20': 0.20,
-                    'WELCOME': 0.15,
-                };
-                const discountPercent = promoDiscounts[promoCode.toUpperCase()] || 0;
-                discount = subtotal * discountPercent;
-            }
-
             const order = await api.createOrder({
                 source: 'kiosk',
                 items: cartItems.map((item) => ({
@@ -570,8 +558,6 @@ export default function Kiosk() {
                     options: item.options,
                 })),
                 paymentMethod,
-                promoCode,
-                discount,
                 customerId: user?.role === 'customer' ? user.userId : undefined,
             });
 
@@ -582,8 +568,8 @@ export default function Kiosk() {
                 subtotal: item.subtotal,
             }));
 
-            const tax = (subtotal - discount) * 0.0825;
-            const total = subtotal - discount + tax;
+            const tax = subtotal * 0.0825;
+            const total = subtotal + tax;
 
             setOrderData({
                 orderId: order.orderId,
