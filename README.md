@@ -98,6 +98,78 @@ src/
 - **Build**: `npm run build`
 - **Preview**: `npm run preview`
 
+# Sprint 3 Final Release
+
+## Deployed Application
+https://project3-gangx1.vercel.app/
+
+## Overview
+This Sprint 3 release finalizes the SwiftServe platform with all remaining features, accessibility requirements, and deployment tasks completed. The system is now fully functional across all user roles.
+
+Sprint 3 focused on stability, authentication, accessibility completion, and preparation for the final demo. All features were regression-tested and verified in the production environment.
+
+## Key Updates
+
+### Authentication & Infrastructure
+- OAuth2 login fully integrated  
+- OTP messaging system completed  
+- Monitoring alerts and backup workflow implemented  
+- Domain + SSL and RDS configuration finalized  
+
+### Accessibility Completion
+- Resizable text  
+- High contrast mode  
+- Keyboard navigation  
+- Screen reader labels  
+- Persona flows (Maria, Vishnu, Carol) verified  
+
+### Core Features Finalized
+- Guest ordering and points system  
+- Seasonal item timing rules  
+- Full end-to-end flow testing
+
+### Deployment & Testing
+- Full regression pass across all sprints  
+- Accessibility re-testing performed  
+- All documentation and demo materials completed  
+
+## Summary
+Sprint 3 completes the SwiftServe platform with full functionality, accessibility compliance, API integration, and production deployment readiness. The system is stable, feature-complete, and prepared for the final comprehensive demo.
+
+# Sprint 2 - MVP Release
+
+Frontend Focus: Sprint 2 MVP Release
+
+Deployed Application:
+https://project3-gangx1.vercel.app/
+
+Overview
+
+This release marks the completion of Sprint 2, introducing major functional improvements, API integrations, UI enhancements, and accessibility features across the customer interface and supporting systems. All Sprint 2 backlog items have been fully implemented, tested, and deployed. This version expands the MVP into a more robust, interactive, and accessible POS customer-facing experience.
+
+Sprint 2 focused on integrating external APIs, enhancing usability, developing advanced UI flows such as checkout and order confirmation, and strengthening system reliability through error recovery and auto-refresh mechanisms.
+
+All planned Sprint 2 tasks were completed and verified using the sprint test plan.
+
+# Frontend Focus: Sprint 1 MVP Release
+
+https://project3-gangx1.vercel.app/
+
+## Overview  
+This release marks the **successful completion of Sprint 1**, delivering a **fully deployed Minimum Viable Product (MVP)** with core frontend and backend functionality. The customer interface is live, interactive, and ready for user feedback. All planned Sprint 1 backlog items are implemented, tested, and deployed.
+
+## Completed Sprint 1 Features (All Functional & Deployed)
+
+| Feature | Description | Status |
+|-------|-----------|--------|
+| **Frontend Setup** | React + Vite, responsive layout, routing, theme | Done |
+| **Backend API** | Express server, PostgreSQL integration, CRUD endpoints | Done |
+| **Authentication Flow** | Login screen, session management, protected routes | Done |
+| **Menu Display** | Dynamic menu loading from database | Done |
+| **Order Builder** | Add/remove items, real-time total, discount logic | Done |
+| **Order Submission** | POST to `/api/orders`, receipt generation | Done |
+| **Database Sync** | Live menu and order persistence | Done |
+
 ## License
 
 Private project - All rights reserved
